@@ -402,6 +402,45 @@ class EvolutionDecisionTest(CoreTest):
         bad_resolution = self.core.dismiss_evolution_decision("dec_missing", 1)
         self.assertEqual(bad_resolution["error"]["code"], "INVALID_ARGUMENT")
 
+    def test_apply_revalidate_evidence_requires_fresh_valid_assessment(self) -> None:
+        saved = self.save()
+        delivered = self.core.toolbox_run(saved["capability_id"])
+        event_id = self.core.store.db.execute(
+            "SELECT event_id FROM evidence_events WHERE event_type = 'procedure_delivered' "
+            "ORDER BY rowid DESC LIMIT 1"
+        ).fetchone()["event_id"]
+        version = self.core.registry.get_version(saved["version_id"])
+        self.core.assess_evidence(
+            event_id,
+            "valid",
+            "reviewed",
+            fingerprint=self.core.evidence.version_fingerprint(version["version_id"]),
+        )
+        self.core.expire_version_evidence(saved["version_id"], "runtime_changed")
+
+        run = self.core.run_maintenance()
+        decision = next(
+            item for item in run["created"] if item["action"] == "revalidate_evidence"
+        )
+        self.assertIn(event_id, decision["payload"]["evidence_ids"])
+
+        blocked = self.core.apply_evolution_decision(decision["decision_id"])
+        self.assertEqual(blocked["error"]["code"], "INVALID_ARGUMENT")
+
+        self.core.assess_evidence(
+            event_id,
+            "valid",
+            "revalidated_after_runtime_change",
+            fingerprint=self.core.evidence.version_fingerprint(version["version_id"]),
+        )
+        applied = self.core.apply_evolution_decision(
+            decision["decision_id"], "runtime verified"
+        )
+        self.assertTrue(applied["applied"], applied)
+        self.assertEqual(applied["revalidated"], 1)
+        self.assertEqual(applied["decision"]["status"], "applied")
+        self.assertEqual(applied["decision"]["resolution"], "runtime verified")
+
     def test_apply_diagnose_failure_decision_creates_diagnosis(self) -> None:
         self._seed_repeated_failure()
         run = self.core.run_maintenance()

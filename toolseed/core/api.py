@@ -5,6 +5,7 @@ never shells out, and never records delivery as task success.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from typing import Any
@@ -789,6 +790,12 @@ class ToolSeed:
                     str(version_id or "-"),
                 )
             )
+            if action == "revalidate_evidence":
+                evidence_ids = suggestion.get("evidence_ids") or []
+                digest = hashlib.sha1(
+                    "|".join(sorted(str(item) for item in evidence_ids)).encode("utf-8")
+                ).hexdigest()[:12]
+                dedup_key += f":{digest}"
             decision, is_new = self.evidence.create_decision(
                 action=action,
                 reason=reason,
@@ -979,55 +986,109 @@ class ToolSeed:
             return {"ok": True, "decision": decision, "applied": False}
         if decision["status"] != "proposed":
             return error_response(INVALID_ARGUMENT, "only proposed decisions can be applied")
-        if decision["action"] != "diagnose_failure":
-            return error_response(
-                INVALID_ARGUMENT,
-                "this decision action requires manual handling; only diagnose_failure is automated",
-            )
 
         payload = decision["payload"] or {}
-        capability_id = payload.get("capability_id")
-        version_id = payload.get("version_id")
-        if not isinstance(capability_id, str) or not isinstance(version_id, str):
-            return error_response(
-                INVALID_ARGUMENT, "diagnose_failure decision is missing capability/version"
-            )
-        failures = payload.get("failures", 0)
-        try:
-            failures = int(failures)
-        except (TypeError, ValueError):
-            failures = 0
-
-        try:
-            with self.store.transaction():
-                diagnosis = self.diagnose_failure(
-                    capability_id=capability_id,
-                    version_id=version_id,
-                    category=payload.get(
-                        "suggested_category", "task_failure_attributed"
-                    ),
-                    summary=f"repeated failures: {failures}",
+        if decision["action"] == "diagnose_failure":
+            capability_id = payload.get("capability_id")
+            version_id = payload.get("version_id")
+            if not isinstance(capability_id, str) or not isinstance(version_id, str):
+                return error_response(
+                    INVALID_ARGUMENT, "diagnose_failure decision is missing capability/version"
                 )
-                if not diagnosis.get("ok"):
-                    raise _CandidateRejected(diagnosis)
-                diagnosis_id = diagnosis["diagnosis"]["diagnosis_id"]
-                self.evidence.mark_decision_applied(
-                    decision_id,
-                    resolution or f"diagnosis:{diagnosis_id}",
-                )
-        except _CandidateRejected as exc:
-            return exc.response
-        except (sqlite3.Error, OSError):
-            return error_response(
-                SAVE_PERSISTENCE_FAILED, "decision application could not be durably recorded"
-            )
+            failures = payload.get("failures", 0)
+            try:
+                failures = int(failures)
+            except (TypeError, ValueError):
+                failures = 0
 
-        return {
-            "ok": True,
-            "decision": self.evidence.get_decision(decision_id),
-            "diagnosis": diagnosis["diagnosis"],
-            "applied": True,
-        }
+            try:
+                with self.store.transaction():
+                    diagnosis = self.diagnose_failure(
+                        capability_id=capability_id,
+                        version_id=version_id,
+                        category=payload.get(
+                            "suggested_category", "task_failure_attributed"
+                        ),
+                        summary=f"repeated failures: {failures}",
+                    )
+                    if not diagnosis.get("ok"):
+                        raise _CandidateRejected(diagnosis)
+                    diagnosis_id = diagnosis["diagnosis"]["diagnosis_id"]
+                    self.evidence.mark_decision_applied(
+                        decision_id,
+                        resolution or f"diagnosis:{diagnosis_id}",
+                    )
+            except _CandidateRejected as exc:
+                return exc.response
+            except (sqlite3.Error, OSError):
+                return error_response(
+                    SAVE_PERSISTENCE_FAILED,
+                    "decision application could not be durably recorded",
+                )
+
+            return {
+                "ok": True,
+                "decision": self.evidence.get_decision(decision_id),
+                "diagnosis": diagnosis["diagnosis"],
+                "applied": True,
+            }
+
+        if decision["action"] == "revalidate_evidence":
+            evidence_ids = payload.get("evidence_ids")
+            version_id = payload.get("version_id")
+            if (
+                not isinstance(version_id, str)
+                or not isinstance(evidence_ids, list)
+                or not evidence_ids
+                or not all(isinstance(item, str) for item in evidence_ids)
+            ):
+                return error_response(
+                    INVALID_ARGUMENT,
+                    "revalidate_evidence decision is missing version/evidence scope",
+                )
+            for evidence_id in evidence_ids:
+                latest = self.evidence.latest_assessment(evidence_id)
+                if (
+                    latest is None
+                    or latest["validity"] != "valid"
+                    or latest["assessed_at"] < decision["created_at"]
+                ):
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "all scoped evidence must be reassessed as valid after the decision was created",
+                    )
+                event = self.store.db.execute(
+                    "SELECT version_id FROM evidence_events WHERE event_id = ?",
+                    (evidence_id,),
+                ).fetchone()
+                if event is None or event["version_id"] != version_id:
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "evidence does not belong to the decision's version",
+                    )
+
+            try:
+                with self.store.transaction():
+                    self.evidence.mark_decision_applied(
+                        decision_id,
+                        resolution or f"revalidated:{len(evidence_ids)} evidence",
+                    )
+            except (sqlite3.Error, OSError):
+                return error_response(
+                    SAVE_PERSISTENCE_FAILED,
+                    "decision application could not be durably recorded",
+                )
+            return {
+                "ok": True,
+                "decision": self.evidence.get_decision(decision_id),
+                "applied": True,
+                "revalidated": len(evidence_ids),
+            }
+
+        return error_response(
+            INVALID_ARGUMENT,
+            "this decision action still requires manual handling",
+        )
 
     def diagnose_failure(
         self,

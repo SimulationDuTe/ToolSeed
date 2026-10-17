@@ -45,6 +45,8 @@ EVENT_ARCHIVED = "capability_archived"
 EVENT_VERSION_RELEASED = "version_released"
 EVENT_VERSION_PROMOTED = "version_promoted"
 EVENT_VERSION_ROLLED_BACK = "version_rolled_back"
+
+REVALIDATION_EVENT_TYPES = (EVENT_DELIVERED, EVENT_TASK_OUTCOME)
 EVENT_DUPLICATE = "duplicate_save"
 
 
@@ -295,6 +297,34 @@ class Evidence:
             changed += 1
         return changed
 
+    def stale_evidence_groups(self) -> list[dict[str, Any]]:
+        groups: dict[str, list[str]] = {}
+        for row in self.store.db.execute(
+            "SELECT event_id, version_id FROM evidence_events "
+            "WHERE version_id IS NOT NULL AND event_type IN (?, ?)",
+            REVALIDATION_EVENT_TYPES,
+        ).fetchall():
+            latest = self.latest_assessment(row["event_id"])
+            if latest is None or latest["validity"] != "stale":
+                continue
+            groups.setdefault(row["version_id"], []).append(row["event_id"])
+
+        result: list[dict[str, Any]] = []
+        for version_id, evidence_ids in groups.items():
+            version = self.store.db.execute(
+                "SELECT capability_id FROM capability_versions WHERE version_id = ?",
+                (version_id,),
+            ).fetchone()
+            result.append(
+                {
+                    "capability_id": version["capability_id"] if version else None,
+                    "version_id": version_id,
+                    "evidence_ids": evidence_ids,
+                    "count": len(evidence_ids),
+                }
+            )
+        return result
+
     def maintenance_report(self, failure_threshold: int = 2) -> dict[str, Any]:
         validity = self.validity_counts()
         repeated = [
@@ -324,13 +354,17 @@ class Evidence:
                 }
             )
         if validity["stale"] > 0:
-            suggestions.append(
-                {
-                    "action": "revalidate_evidence",
-                    "reason": "stale_evidence",
-                    "count": validity["stale"],
-                }
-            )
+            for group in self.stale_evidence_groups():
+                suggestions.append(
+                    {
+                        "action": "revalidate_evidence",
+                        "reason": "stale_evidence",
+                        "capability_id": group["capability_id"],
+                        "version_id": group["version_id"],
+                        "evidence_ids": group["evidence_ids"],
+                        "count": group["count"],
+                    }
+                )
         for item in repeated:
             suggestions.append(
                 {

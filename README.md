@@ -176,7 +176,9 @@ P1 第一块已实现：
 - `maintenance_report()`：汇总未评估/失效证据、重复失败与开放诊断，给出建议动作但不自动改能力；
 - `run_maintenance()`：把建议转成去重的 `evolution_decisions`，供人工查看/驳回；
 - `apply_evolution_decision()`：自动应用 `diagnose_failure` 决策并原子写入诊断；
-  其他动作仍要求人工处理，避免自动修改能力；
+  对 `revalidate_evidence` 决策，必须先对决策范围内的每条证据重新评估为 `valid`，
+  且评估时间晚于决策创建时间，Core 才允许应用；其他动作仍要求人工处理；
+- 重新验证不会自动把旧证据“洗白”：新的 `valid` 评估必须来自显式 `assess_evidence` 调用；
 - `capability_observations`：保存从证据提炼的适用性、失败模式、依赖/环境敏感性和待验证假设，
   可标记 `active` / `stale` / `retracted`，但不会直接修改能力或激活指针；
 - 版本隔离、能力隔离或归档时自动把相关活跃观察标记为 `stale`，并记录原因；
@@ -184,6 +186,19 @@ P1 第一块已实现：
 - `rollback_version`：受控回滚到更旧的 `ready` 版本，记录 `version_rolled_back` 事件；
 - `version_report()`：按版本汇总交付、任务结果、诊断、观察、证据有效性与回滚次数；
 - `toolbox_stats()` 增加评估计数、有效性分布、诊断状态、维护决策与观察计数。
+
+### 重新验证流程
+
+1. 证据被标记 `stale`（指纹/策略变化或隔离）后，`run_maintenance()` 生成
+   `revalidate_evidence` 决策，payload 记录 `version_id` 和需要复核的 `evidence_ids`
+   （只包含交付/任务结果类证据）；
+2. 人工或外部验证器重新执行检查，并对每条证据显式调用 `assess_evidence(..., "valid", ...)`；
+3. `apply_evolution_decision()` 逐条检查：
+   - 最新评估必须是 `valid`；
+   - 评估时间必须晚于决策创建时间；
+   - 证据必须属于该决策对应的版本；
+4. 全部通过才把决策标记为 `applied`；任一条不满足则拒绝，决策保持 `proposed`；
+5. Core 不会自动把旧证据改成 `valid`，也不会因为“决策存在”就默认通过。
 
 ## 存储
 
@@ -266,7 +281,7 @@ python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "v
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **139 项**测试，覆盖：
+当前 **140 项**测试，覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -280,7 +295,7 @@ python -m unittest discover -s tests -t . -v
 - CLI 的 save/run/record-outcome/stats/archive/release/release-version/promote-version/quarantine；
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
-- P1 证据与观察自动失效、维护报告、去重维护决策与应用、能力观察、版本报告与回滚、失败诊断、修复候选与统计；
+- P1 证据与观察自动失效、维护报告、去重维护决策与应用、重新验证决策闭环、能力观察、版本报告与回滚、失败诊断、修复候选与统计；
 - schema 版本迁移、嵌套事务回滚、回滚/修复候选原子性、invocation 归属校验。
 
 ## 质量门禁
