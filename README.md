@@ -177,6 +177,8 @@ P1 第一块已实现：
 - `run_maintenance()`：把建议转成去重的 `evolution_decisions`，供人工查看/驳回；
 - `capability_observations`：保存从证据提炼的适用性、失败模式、依赖/环境敏感性和待验证假设，
   可标记 `active` / `stale` / `retracted`，但不会直接修改能力或激活指针；
+- `rollback_version`：受控回滚到更旧的 `ready` 版本，记录 `version_rolled_back` 事件；
+- `version_report()`：按版本汇总交付、任务结果、诊断、观察、证据有效性与回滚次数；
 - `toolbox_stats()` 增加评估计数、有效性分布、诊断状态、维护决策与观察计数。
 
 ## 存储
@@ -206,6 +208,8 @@ P1 第一块已实现：
 - `quarantine_version(version_id, reason)`：隔离单个版本；
 - `release_version(version_id, reason, evidence_ref?)`：解除版本隔离，回到 `candidate`；
 - `promote_version(version_id, reason, evidence_ref?)`：重新检查内容后把候选版本提升为 `ready`，高风险内容会被拒绝；
+- `rollback_version(capability_id, version_id, reason, evidence_ref?)`：回滚到更旧的 `ready` 版本并记录事件；
+- `version_report(version_id)`：按版本汇总交付、任务结果、诊断、观察、证据有效性与回滚；
 - `archive(capability_id, reason)`：退役一个能力；
 - `record_task_outcome(...)`：显式记录带来源的任务结果信号；
 - `assess_evidence(...)` / `evidence_validity(...)`：追加证据有效性评估并读取当前投影；
@@ -229,6 +233,8 @@ python -m toolseed quarantine-version '{"version_id": "ver_xxx"}'
 python -m toolseed release '{"capability_id": "cap_xxx", "reason": "incident reviewed", "evidence_ref": "ticket-1"}'
 python -m toolseed release-version '{"version_id": "ver_xxx", "reason": "reviewed"}'
 python -m toolseed promote-version '{"version_id": "ver_xxx", "reason": "content rechecked"}'
+python -m toolseed rollback '{"capability_id": "cap_xxx", "version_id": "ver_xxx", "reason": "regression"}'
+python -m toolseed version-report '{"version_id": "ver_xxx"}'
 python -m toolseed maintenance
 python -m toolseed maintenance-run
 python -m toolseed list-decisions '{"status": "proposed"}'
@@ -252,7 +258,7 @@ python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "v
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **127 项**测试，覆盖：
+当前 **130 项**测试，覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -266,7 +272,7 @@ python -m unittest discover -s tests -t . -v
 - CLI 的 save/run/record-outcome/stats/archive/release/release-version/promote-version/quarantine；
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
-- P1 证据有效性投影、自动失效、维护报告、去重维护决策、能力观察、失败诊断、修复候选与统计。
+- P1 证据有效性投影、自动失效、维护报告、去重维护决策、能力观察、版本报告与回滚、失败诊断、修复候选与统计。
 
 ## 价值对照实验
 
@@ -306,8 +312,8 @@ python -m benchmarks.live_experiment --mode command \
 已实现（P0 + P1 第一块）：四个固定 API、Capability/Version/Invocation/Evidence 模型、不可变版本与
 内容哈希、唯一 `procedure` 表示、Manifest 校验、关键词检索与硬筛选、Procedure 交付、
 本地 SQLite 持久化、能力/版本隔离与退役、能力级隔离解除、版本解除与候选提升、证据有效性评估、
-自动失效与维护报告、维护决策、能力观察、失败诊断与修复候选、`LocalAdapter` 与 Skill、
-价值对照实验骨架、live A/B 实验框架。
+自动失效与维护报告、维护决策、能力观察、版本报告与受控回滚、失败诊断与修复候选、`LocalAdapter`
+与 Skill、价值对照实验骨架、live A/B 实验框架。
 
 尚未实现：`executable` / `workflow`（`kind` 不是 `procedure` 时返回
 `UNSUPPORTED_CAPABILITY_KIND`）、代码执行与沙箱、多文件/ZIP 能力包、向量检索或 LLM 重排、
