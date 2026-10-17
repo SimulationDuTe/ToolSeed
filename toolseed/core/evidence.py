@@ -1,0 +1,355 @@
+"""Append-only evidence events and invocation records (P0-SLIM §6.3, §6.4, §7).
+
+Delivery is recorded as a delivery, never as task success. Only an explicit
+`task_outcome_signal` event may report a task outcome, and its source is
+always stored alongside it.
+"""
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from .registry import new_id, now
+from .storage import Store
+
+OUTCOMES = ("success", "failure", "partial", "unknown")
+SOURCE_TYPES = ("core", "agent", "harness", "test_runner", "external_system", "human")
+VALIDITIES = ("valid", "stale", "superseded")
+FAILURE_CATEGORIES = (
+    "retrieval_mismatch",
+    "applicability_mismatch",
+    "contract_error",
+    "procedure_ambiguity",
+    "implementation_error",
+    "dependency_or_runtime_error",
+    "permission_denied",
+    "timeout_or_resource_limit",
+    "output_protocol_error",
+    "workflow_child_failure",
+    "security_or_integrity_violation",
+    "task_outcome_unknown",
+    "task_failure_attributed",
+    "external_environment_failure",
+)
+
+EVENT_PROCEDURE_SAVED = "procedure_saved"
+EVENT_SEARCH = "search_performed"
+EVENT_DELIVERED = "procedure_delivered"
+EVENT_TASK_OUTCOME = "task_outcome_signal"
+EVENT_QUARANTINED = "capability_quarantined"
+EVENT_RELEASED = "capability_released"
+EVENT_ARCHIVED = "capability_archived"
+EVENT_VERSION_RELEASED = "version_released"
+EVENT_VERSION_PROMOTED = "version_promoted"
+EVENT_DUPLICATE = "duplicate_save"
+
+
+class Evidence:
+    def __init__(self, store: Store) -> None:
+        self.store = store
+
+    def record(
+        self,
+        event_type: str,
+        *,
+        source_type: str = "core",
+        outcome: str = "unknown",
+        capability_id: str | None = None,
+        version_id: str | None = None,
+        invocation_id: str | None = None,
+        task_id: str | None = None,
+        quantity: int = 0,
+        summary: str | None = None,
+    ) -> str:
+        if outcome not in OUTCOMES:
+            raise ValueError(f"unsupported outcome: {outcome}")
+        if source_type not in SOURCE_TYPES:
+            raise ValueError(f"unsupported source_type: {source_type}")
+        event_id = new_id("ev")
+        with self.store.transaction() as db:
+            db.execute(
+                "INSERT INTO evidence_events (event_id, event_type, created_at, source_type, "
+                "capability_id, version_id, invocation_id, task_id, outcome, quantity, summary) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    event_id,
+                    event_type,
+                    now(),
+                    source_type,
+                    capability_id,
+                    version_id,
+                    invocation_id,
+                    task_id,
+                    outcome,
+                    int(quantity),
+                    summary,
+                ),
+            )
+        return event_id
+
+    def record_invocation(
+        self,
+        capability_id: str,
+        version_id: str,
+        *,
+        context: dict[str, Any] | None = None,
+        task_id: str | None = None,
+        delivery_status: str = "guidance_delivered",
+    ) -> str:
+        invocation_id = new_id("inv")
+        safe_context = {}
+        if isinstance(context, dict):
+            for key in ("task_id", "session_id", "harness", "workspace"):
+                value = context.get(key)
+                if isinstance(value, str) and value:
+                    safe_context[key] = value
+        with self.store.transaction() as db:
+            db.execute(
+                "INSERT INTO invocations (invocation_id, capability_id, version_id, created_at, "
+                "context_json, delivery_status, task_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    invocation_id,
+                    capability_id,
+                    version_id,
+                    now(),
+                    json.dumps(safe_context, ensure_ascii=False) if safe_context else None,
+                    delivery_status,
+                    task_id,
+                ),
+            )
+        return invocation_id
+
+    def event_counts(self) -> dict[str, int]:
+        return {
+            row["event_type"]: int(row["n"])
+            for row in self.store.db.execute(
+                "SELECT event_type, COUNT(*) AS n FROM evidence_events GROUP BY event_type"
+            )
+        }
+
+    def quantity_sum(self, event_type: str) -> int:
+        row = self.store.db.execute(
+            "SELECT COALESCE(SUM(quantity), 0) AS n FROM evidence_events WHERE event_type = ?",
+            (event_type,),
+        ).fetchone()
+        return int(row["n"] or 0)
+
+    def outcome_counts(self) -> dict[str, int]:
+        counts = {outcome: 0 for outcome in OUTCOMES}
+        for row in self.store.db.execute(
+            "SELECT outcome, COUNT(*) AS n FROM evidence_events WHERE event_type = ? GROUP BY outcome",
+            (EVENT_TASK_OUTCOME,),
+        ).fetchall():
+            counts[row["outcome"]] = int(row["n"])
+        return counts
+
+    def total_events(self) -> int:
+        return int(
+            self.store.db.execute("SELECT COUNT(*) AS n FROM evidence_events").fetchone()["n"]
+        )
+
+    # -- evidence validity (P1) ------------------------------------------
+    def evidence_exists(self, evidence_id: str) -> bool:
+        row = self.store.db.execute(
+            "SELECT 1 FROM evidence_events WHERE event_id = ?", (evidence_id,)
+        ).fetchone()
+        return row is not None
+
+    def assess(
+        self,
+        evidence_id: str,
+        validity: str,
+        reason_code: str,
+        *,
+        fingerprint: dict[str, Any] | None = None,
+        invalidated_by: str | None = None,
+        superseded_by: str | None = None,
+    ) -> dict[str, Any]:
+        if validity not in VALIDITIES:
+            raise ValueError(f"unsupported validity: {validity}")
+        assessment_id = new_id("eva")
+        assessed_at = now()
+        with self.store.transaction() as db:
+            db.execute(
+                "INSERT INTO evidence_validity_assessments "
+                "(assessment_id, evidence_id, validity, reason_code, fingerprint_json, "
+                "assessed_at, invalidated_by, superseded_by) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    assessment_id,
+                    evidence_id,
+                    validity,
+                    reason_code,
+                    json.dumps(fingerprint, ensure_ascii=False, sort_keys=True)
+                    if fingerprint is not None
+                    else None,
+                    assessed_at,
+                    invalidated_by,
+                    superseded_by,
+                ),
+            )
+        return {
+            "assessment_id": assessment_id,
+            "evidence_id": evidence_id,
+            "validity": validity,
+            "reason_code": reason_code,
+            "fingerprint": fingerprint,
+            "assessed_at": assessed_at,
+            "invalidated_by": invalidated_by,
+            "superseded_by": superseded_by,
+        }
+
+    def latest_validity(self, evidence_id: str) -> str | None:
+        row = self.store.db.execute(
+            "SELECT validity FROM evidence_validity_assessments "
+            "WHERE evidence_id = ? ORDER BY assessed_at DESC, rowid DESC LIMIT 1",
+            (evidence_id,),
+        ).fetchone()
+        return row["validity"] if row is not None else None
+
+    def assessments(self, evidence_id: str) -> list[dict[str, Any]]:
+        rows = self.store.db.execute(
+            "SELECT * FROM evidence_validity_assessments "
+            "WHERE evidence_id = ? ORDER BY assessed_at, rowid",
+            (evidence_id,),
+        ).fetchall()
+        return [self._assessment_dict(row) for row in rows]
+
+    def assessment_count(self) -> int:
+        return int(
+            self.store.db.execute(
+                "SELECT COUNT(*) AS n FROM evidence_validity_assessments"
+            ).fetchone()["n"]
+        )
+
+    def validity_counts(self) -> dict[str, int]:
+        counts = {validity: 0 for validity in VALIDITIES}
+        rows = self.store.db.execute(
+            "SELECT a.validity AS validity, COUNT(*) AS n "
+            "FROM evidence_validity_assessments a "
+            "JOIN (SELECT evidence_id, MAX(rowid) AS max_id "
+            "      FROM evidence_validity_assessments GROUP BY evidence_id) latest "
+            "  ON a.rowid = latest.max_id "
+            "GROUP BY a.validity"
+        ).fetchall()
+        for row in rows:
+            counts[row["validity"]] = int(row["n"])
+        assessed = sum(counts.values())
+        counts["unassessed"] = max(0, self.total_events() - assessed)
+        return counts
+
+    # -- failure diagnosis and repair candidates (P1) --------------------
+    def create_diagnosis(
+        self,
+        *,
+        capability_id: str,
+        version_id: str,
+        category: str,
+        summary: str,
+        invocation_id: str | None = None,
+        task_id: str | None = None,
+        evidence_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        diagnosis_id = new_id("diag")
+        stamp = now()
+        with self.store.transaction() as db:
+            db.execute(
+                "INSERT INTO failure_diagnoses "
+                "(diagnosis_id, capability_id, version_id, invocation_id, task_id, "
+                "category, summary, evidence_ids_json, status, repair_version_id, "
+                "created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', NULL, ?, ?)",
+                (
+                    diagnosis_id,
+                    capability_id,
+                    version_id,
+                    invocation_id,
+                    task_id,
+                    category,
+                    summary,
+                    json.dumps(evidence_ids or [], ensure_ascii=False),
+                    stamp,
+                    stamp,
+                ),
+            )
+        return self.get_diagnosis(diagnosis_id)  # type: ignore[return-value]
+
+    def get_diagnosis(self, diagnosis_id: str) -> dict[str, Any] | None:
+        row = self.store.db.execute(
+            "SELECT * FROM failure_diagnoses WHERE diagnosis_id = ?", (diagnosis_id,)
+        ).fetchone()
+        return self._diagnosis_dict(row) if row is not None else None
+
+    def list_diagnoses(
+        self,
+        *,
+        capability_id: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM failure_diagnoses WHERE 1 = 1"
+        params: list[Any] = []
+        if capability_id is not None:
+            query += " AND capability_id = ?"
+            params.append(capability_id)
+        if status is not None:
+            query += " AND status = ?"
+            params.append(status)
+        query += " ORDER BY created_at, rowid"
+        rows = self.store.db.execute(query, params).fetchall()
+        return [self._diagnosis_dict(row) for row in rows]
+
+    def mark_repair_proposed(self, diagnosis_id: str, version_id: str) -> None:
+        with self.store.transaction() as db:
+            db.execute(
+                "UPDATE failure_diagnoses SET status = 'repair_proposed', "
+                "repair_version_id = ?, updated_at = ? WHERE diagnosis_id = ?",
+                (version_id, now(), diagnosis_id),
+            )
+
+    def dismiss_diagnosis(self, diagnosis_id: str) -> None:
+        with self.store.transaction() as db:
+            db.execute(
+                "UPDATE failure_diagnoses SET status = 'dismissed', updated_at = ? "
+                "WHERE diagnosis_id = ?",
+                (now(), diagnosis_id),
+            )
+
+    def diagnosis_counts(self) -> dict[str, int]:
+        counts = {"open": 0, "repair_proposed": 0, "dismissed": 0}
+        for row in self.store.db.execute(
+            "SELECT status, COUNT(*) AS n FROM failure_diagnoses GROUP BY status"
+        ).fetchall():
+            counts[row["status"]] = int(row["n"])
+        return counts
+
+    @staticmethod
+    def _assessment_dict(row: Any) -> dict[str, Any]:
+        return {
+            "assessment_id": row["assessment_id"],
+            "evidence_id": row["evidence_id"],
+            "validity": row["validity"],
+            "reason_code": row["reason_code"],
+            "fingerprint": json.loads(row["fingerprint_json"])
+            if row["fingerprint_json"]
+            else None,
+            "assessed_at": row["assessed_at"],
+            "invalidated_by": row["invalidated_by"],
+            "superseded_by": row["superseded_by"],
+        }
+
+    @staticmethod
+    def _diagnosis_dict(row: Any) -> dict[str, Any]:
+        return {
+            "diagnosis_id": row["diagnosis_id"],
+            "capability_id": row["capability_id"],
+            "version_id": row["version_id"],
+            "invocation_id": row["invocation_id"],
+            "task_id": row["task_id"],
+            "category": row["category"],
+            "summary": row["summary"],
+            "evidence_ids": json.loads(row["evidence_ids_json"] or "[]"),
+            "status": row["status"],
+            "repair_version_id": row["repair_version_id"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
