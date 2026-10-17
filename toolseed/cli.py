@@ -38,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
             "maintenance-run",
             "list-decisions",
             "dismiss-decision",
+            "apply-decision",
             "record-observation",
             "list-observations",
             "set-observation-status",
@@ -120,6 +121,11 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif namespace.operation == "dismiss-decision":
             result = app.dismiss_evolution_decision(
+                payload.get("decision_id"),
+                payload.get("resolution"),
+            )
+        elif namespace.operation == "apply-decision":
+            result = app.apply_evolution_decision(
                 payload.get("decision_id"),
                 payload.get("resolution"),
             )

@@ -963,6 +963,72 @@ class ToolSeed:
             "changed": True,
         }
 
+    def apply_evolution_decision(
+        self,
+        decision_id: Any,
+        resolution: Any = None,
+    ) -> dict[str, Any]:
+        if not isinstance(decision_id, str):
+            return error_response(INVALID_ARGUMENT, "decision_id must be a string")
+        if resolution is not None and not isinstance(resolution, str):
+            return error_response(INVALID_ARGUMENT, "resolution must be a string")
+        decision = self.evidence.get_decision(decision_id)
+        if decision is None:
+            return error_response(INVALID_ARGUMENT, "decision_id does not exist")
+        if decision["status"] == "applied":
+            return {"ok": True, "decision": decision, "applied": False}
+        if decision["status"] != "proposed":
+            return error_response(INVALID_ARGUMENT, "only proposed decisions can be applied")
+        if decision["action"] != "diagnose_failure":
+            return error_response(
+                INVALID_ARGUMENT,
+                "this decision action requires manual handling; only diagnose_failure is automated",
+            )
+
+        payload = decision["payload"] or {}
+        capability_id = payload.get("capability_id")
+        version_id = payload.get("version_id")
+        if not isinstance(capability_id, str) or not isinstance(version_id, str):
+            return error_response(
+                INVALID_ARGUMENT, "diagnose_failure decision is missing capability/version"
+            )
+        failures = payload.get("failures", 0)
+        try:
+            failures = int(failures)
+        except (TypeError, ValueError):
+            failures = 0
+
+        try:
+            with self.store.transaction():
+                diagnosis = self.diagnose_failure(
+                    capability_id=capability_id,
+                    version_id=version_id,
+                    category=payload.get(
+                        "suggested_category", "task_failure_attributed"
+                    ),
+                    summary=f"repeated failures: {failures}",
+                )
+                if not diagnosis.get("ok"):
+                    raise _CandidateRejected(diagnosis)
+                diagnosis_id = diagnosis["diagnosis"]["diagnosis_id"]
+                self.evidence.mark_decision_applied(
+                    decision_id,
+                    resolution or f"diagnosis:{diagnosis_id}",
+                )
+        except _CandidateRejected as exc:
+            return exc.response
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "decision application could not be durably recorded"
+            )
+
+        return {
+            "ok": True,
+            "decision": self.evidence.get_decision(decision_id),
+            "diagnosis": diagnosis["diagnosis"],
+            "applied": True,
+        }
+
     def diagnose_failure(
         self,
         *,

@@ -175,6 +175,8 @@ P1 第一块已实现：
 - 版本/能力隔离时自动把该版本相关证据追加为 `stale`，原始事件不改写；
 - `maintenance_report()`：汇总未评估/失效证据、重复失败与开放诊断，给出建议动作但不自动改能力；
 - `run_maintenance()`：把建议转成去重的 `evolution_decisions`，供人工查看/驳回；
+- `apply_evolution_decision()`：自动应用 `diagnose_failure` 决策并原子写入诊断；
+  其他动作仍要求人工处理，避免自动修改能力；
 - `capability_observations`：保存从证据提炼的适用性、失败模式、依赖/环境敏感性和待验证假设，
   可标记 `active` / `stale` / `retracted`，但不会直接修改能力或激活指针；
 - 版本隔离、能力隔离或归档时自动把相关活跃观察标记为 `stale`，并记录原因；
@@ -219,6 +221,7 @@ P1 第一块已实现：
 - `maintenance_report()`：维护扫描，返回未评估/失效证据、重复失败和开放诊断；
 - `run_maintenance()`：把维护建议落地为去重的 `evolution_decisions`；
 - `list_evolution_decisions(...)` / `dismiss_evolution_decision(...)`：查看与驳回维护决策；
+- `apply_evolution_decision(...)`：应用可自动执行的维护决策；
 - `diagnose_failure(...)` / `list_failure_diagnoses(...)` / `dismiss_diagnosis(...)`：失败诊断管理；
 - `record_observation(...)` / `list_observations(...)` / `set_observation_status(...)`：能力观察管理；
 - `expire_version_observations(...)`：显式让某版本观察失效；
@@ -242,6 +245,7 @@ python -m toolseed maintenance
 python -m toolseed maintenance-run
 python -m toolseed list-decisions '{"status": "proposed"}'
 python -m toolseed dismiss-decision '{"decision_id": "dec_xxx", "resolution": "handled"}'
+python -m toolseed apply-decision '{"decision_id": "dec_xxx", "resolution": "confirmed"}'
 python -m toolseed record-observation '{"capability_id": "cap_xxx", "observation_type": "applicability", "summary": "仅在本地 Harness 适用", "generation_method": "human"}'
 python -m toolseed list-observations '{"capability_id": "cap_xxx", "status": "active"}'
 python -m toolseed set-observation-status '{"observation_id": "obs_xxx", "status": "stale", "reason": "environment changed"}'
@@ -262,7 +266,7 @@ python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "v
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **138 项**测试，覆盖：
+当前 **139 项**测试，覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -276,7 +280,7 @@ python -m unittest discover -s tests -t . -v
 - CLI 的 save/run/record-outcome/stats/archive/release/release-version/promote-version/quarantine；
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
-- P1 证据与观察自动失效、维护报告、去重维护决策、能力观察、版本报告与回滚、失败诊断、修复候选与统计；
+- P1 证据与观察自动失效、维护报告、去重维护决策与应用、能力观察、版本报告与回滚、失败诊断、修复候选与统计；
 - schema 版本迁移、嵌套事务回滚、回滚/修复候选原子性、invocation 归属校验。
 
 ## 质量门禁

@@ -520,6 +520,18 @@ class Evidence:
                 (resolution, now(), decision_id),
             )
 
+    def mark_decision_applied(
+        self,
+        decision_id: str,
+        resolution: str | None = None,
+    ) -> None:
+        with self.store.transaction() as db:
+            db.execute(
+                "UPDATE evolution_decisions SET status = 'applied', resolution = ?, "
+                "updated_at = ? WHERE decision_id = ?",
+                (resolution, now(), decision_id),
+            )
+
     def decision_counts(self) -> dict[str, int]:
         counts = {"proposed": 0, "applied": 0, "dismissed": 0}
         for row in self.store.db.execute(
