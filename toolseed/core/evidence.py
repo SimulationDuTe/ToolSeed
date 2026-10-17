@@ -44,6 +44,7 @@ EVENT_RELEASED = "capability_released"
 EVENT_ARCHIVED = "capability_archived"
 EVENT_VERSION_RELEASED = "version_released"
 EVENT_VERSION_PROMOTED = "version_promoted"
+EVENT_VERSION_ROLLED_BACK = "version_rolled_back"
 EVENT_DUPLICATE = "duplicate_save"
 
 
@@ -616,6 +617,78 @@ class Evidence:
         ).fetchall():
             counts[row["status"]] = int(row["n"])
         return counts
+
+    def version_stats(self, version_id: str) -> dict[str, Any] | None:
+        version = self.store.db.execute(
+            "SELECT version_id, capability_id, version_number, content_hash, status "
+            "FROM capability_versions WHERE version_id = ?",
+            (version_id,),
+        ).fetchone()
+        if version is None:
+            return None
+
+        deliveries = int(
+            self.store.db.execute(
+                "SELECT COUNT(*) AS n FROM invocations WHERE version_id = ?",
+                (version_id,),
+            ).fetchone()["n"]
+        )
+        outcomes = {outcome: 0 for outcome in OUTCOMES}
+        for row in self.store.db.execute(
+            "SELECT outcome, COUNT(*) AS n FROM evidence_events "
+            "WHERE event_type = ? AND version_id = ? GROUP BY outcome",
+            (EVENT_TASK_OUTCOME, version_id),
+        ).fetchall():
+            outcomes[row["outcome"]] = int(row["n"])
+
+        diagnoses = {"open": 0, "repair_proposed": 0, "dismissed": 0}
+        for row in self.store.db.execute(
+            "SELECT status, COUNT(*) AS n FROM failure_diagnoses "
+            "WHERE version_id = ? GROUP BY status",
+            (version_id,),
+        ).fetchall():
+            diagnoses[row["status"]] = int(row["n"])
+
+        observations = {"active": 0, "stale": 0, "retracted": 0}
+        for row in self.store.db.execute(
+            "SELECT status, COUNT(*) AS n FROM capability_observations "
+            "WHERE version_id = ? GROUP BY status",
+            (version_id,),
+        ).fetchall():
+            observations[row["status"]] = int(row["n"])
+
+        validity = {validity: 0 for validity in VALIDITIES}
+        validity["unassessed"] = 0
+        for row in self.store.db.execute(
+            "SELECT event_id FROM evidence_events WHERE version_id = ?", (version_id,)
+        ).fetchall():
+            latest = self.latest_assessment(row["event_id"])
+            if latest is None:
+                validity["unassessed"] += 1
+            else:
+                validity[latest["validity"]] += 1
+
+        rollbacks = int(
+            self.store.db.execute(
+                "SELECT COUNT(*) AS n FROM evidence_events "
+                "WHERE event_type = ? AND version_id = ?",
+                (EVENT_VERSION_ROLLED_BACK, version_id),
+            ).fetchone()["n"]
+        )
+
+        return {
+            "version_id": version["version_id"],
+            "capability_id": version["capability_id"],
+            "version_number": int(version["version_number"]),
+            "content_hash": version["content_hash"],
+            "status": version["status"],
+            "deliveries": deliveries,
+            "task_outcomes": outcomes,
+            "diagnoses": diagnoses,
+            "observations": observations,
+            "evidence_validity": validity,
+            "rollbacks": rollbacks,
+        }
 
     @staticmethod
     def _observation_dict(row: Any) -> dict[str, Any]:

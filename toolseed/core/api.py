@@ -31,6 +31,7 @@ from .evidence import (
     EVENT_TASK_OUTCOME,
     EVENT_VERSION_PROMOTED,
     EVENT_VERSION_RELEASED,
+    EVENT_VERSION_ROLLED_BACK,
     FAILURE_CATEGORIES,
     OBSERVATION_METHODS,
     OBSERVATION_STATUSES,
@@ -524,6 +525,70 @@ class ToolSeed:
             "promoted": True,
         }
 
+    def rollback_version(
+        self,
+        capability_id: Any,
+        version_id: Any,
+        reason: Any,
+        evidence_ref: Any = None,
+    ) -> dict[str, Any]:
+        if not isinstance(capability_id, str):
+            return error_response(INVALID_ARGUMENT, "capability_id must be a string")
+        if not isinstance(version_id, str):
+            return error_response(INVALID_ARGUMENT, "version_id must be a string")
+        if not isinstance(reason, str) or not reason.strip():
+            return error_response(INVALID_ARGUMENT, "rollback reason must be a non-empty string")
+        if evidence_ref is not None and not isinstance(evidence_ref, str):
+            return error_response(INVALID_ARGUMENT, "evidence_ref must be a string")
+        capability = self.registry.get_capability(capability_id)
+        if capability is None:
+            return error_response(CAPABILITY_NOT_FOUND, "no capability matches that id")
+        if capability["archived_at"]:
+            return error_response(CAPABILITY_ARCHIVED, "archived capabilities cannot be rolled back")
+        if capability["quarantined_at"]:
+            return error_response(
+                CAPABILITY_QUARANTINED, "release the capability quarantine before rollback"
+            )
+        version = self.registry.get_version(version_id)
+        if version is None or version["capability_id"] != capability_id:
+            return error_response(INVALID_ARGUMENT, "version_id does not belong to that capability")
+        if version["status"] != STATUS_READY:
+            return error_response(CAPABILITY_NOT_READY, "rollback target is not ready")
+        previous_id = capability["current_version_id"]
+        if previous_id is None:
+            return error_response(CAPABILITY_NOT_READY, "capability has no current version")
+        if previous_id == version_id:
+            return {
+                "ok": True,
+                "capability_id": capability_id,
+                "version_id": version_id,
+                "rolled_back": False,
+                "note": "version is already current",
+            }
+        previous = self.registry.get_version(previous_id)
+        if previous is None or int(version["version_number"]) >= int(previous["version_number"]):
+            return error_response(
+                INVALID_ARGUMENT, "rollback target must be an older version"
+            )
+
+        self.registry.set_current_version(capability_id, version_id)
+        summary = f"rollback: {reason.strip()[:200]}"
+        if evidence_ref and evidence_ref.strip():
+            summary += f" | evidence: {evidence_ref.strip()[:200]}"
+        self.evidence.record(
+            EVENT_VERSION_ROLLED_BACK,
+            capability_id=capability_id,
+            version_id=version_id,
+            summary=summary[:400],
+        )
+        return {
+            "ok": True,
+            "capability_id": capability_id,
+            "previous_version_id": previous_id,
+            "version_id": version_id,
+            "rolled_back": True,
+        }
+
     # -- P1 evidence validity, diagnosis and repair ----------------------
     def assess_evidence(
         self,
@@ -601,6 +666,14 @@ class ToolSeed:
 
     def maintenance_report(self) -> dict[str, Any]:
         return {"ok": True, "report": self.evidence.maintenance_report()}
+
+    def version_report(self, version_id: Any) -> dict[str, Any]:
+        if not isinstance(version_id, str):
+            return error_response(INVALID_ARGUMENT, "version_id must be a string")
+        report = self.evidence.version_stats(version_id)
+        if report is None:
+            return error_response(INVALID_ARGUMENT, "version_id does not exist")
+        return {"ok": True, "report": report}
 
     def run_maintenance(self) -> dict[str, Any]:
         report = self.evidence.maintenance_report()

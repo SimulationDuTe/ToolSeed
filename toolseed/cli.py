@@ -32,6 +32,8 @@ def main(argv: list[str] | None = None) -> int:
             "release",
             "release-version",
             "promote-version",
+            "rollback",
+            "version-report",
             "maintenance",
             "maintenance-run",
             "list-decisions",
@@ -97,6 +99,15 @@ def main(argv: list[str] | None = None) -> int:
                 payload.get("reason"),
                 payload.get("evidence_ref"),
             )
+        elif namespace.operation == "rollback":
+            result = app.rollback_version(
+                payload.get("capability_id"),
+                payload.get("version_id"),
+                payload.get("reason"),
+                payload.get("evidence_ref"),
+            )
+        elif namespace.operation == "version-report":
+            result = app.version_report(payload.get("version_id"))
         elif namespace.operation == "maintenance":
             result = app.maintenance_report()
         elif namespace.operation == "maintenance-run":
