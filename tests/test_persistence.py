@@ -93,6 +93,7 @@ class PersistenceTest(CoreTest):
                 "evidence_validity_assessments",
                 "failure_diagnoses",
                 "evolution_decisions",
+                "capability_observations",
             }
             <= tables
         )

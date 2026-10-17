@@ -142,6 +142,100 @@ class EvidenceValidityTest(CoreTest):
         self.assertEqual(suggestions[0]["suggested_category"], "task_failure_attributed")
 
 
+class ObservationTest(CoreTest):
+    case = "p1-observations"
+
+    def test_record_list_and_update_observation(self) -> None:
+        saved = self.save()
+        delivered = self.core.toolbox_run(saved["capability_id"])
+        self.assertTrue(delivered["ok"], delivered)
+        event_id = self.core.store.db.execute(
+            "SELECT event_id FROM evidence_events WHERE event_type = 'procedure_delivered' "
+            "ORDER BY rowid DESC LIMIT 1"
+        ).fetchone()["event_id"]
+
+        recorded = self.core.record_observation(
+            capability_id=saved["capability_id"],
+            version_id=saved["version_id"],
+            observation_type="applicability",
+            summary="仅在服务端日志可访问时适用",
+            evidence_ids=[event_id],
+            applicability={"harnesses": ["local"]},
+            generation_method="human",
+            confidence=0.8,
+        )
+        self.assertTrue(recorded["ok"], recorded)
+        observation = recorded["observation"]
+        self.assertEqual(observation["status"], "active")
+        self.assertEqual(observation["evidence_ids"], [event_id])
+        self.assertEqual(observation["confidence"], 0.8)
+
+        listed = self.core.list_observations(
+            capability_id=saved["capability_id"], status="active"
+        )
+        self.assertEqual(len(listed["observations"]), 1)
+
+        changed = self.core.set_observation_status(
+            observation["observation_id"], "stale", "environment changed"
+        )
+        self.assertTrue(changed["changed"])
+        self.assertEqual(changed["observation"]["status"], "stale")
+        self.assertEqual(changed["observation"]["status_reason"], "environment changed")
+        self.assertFalse(
+            self.core.set_observation_status(
+                observation["observation_id"], "stale"
+            )["changed"]
+        )
+
+        stats = self.core.toolbox_stats()
+        self.assertEqual(stats["observations"]["stale"], 1)
+        self.assertEqual(stats["observations"]["active"], 0)
+
+        # Observations never change the version or activation pointer.
+        version = self.core.registry.get_version(saved["version_id"])
+        self.assertEqual(version["status"], "ready")
+        self.assertEqual(
+            self.core.registry.get_capability(saved["capability_id"])["current_version_id"],
+            saved["version_id"],
+        )
+
+    def test_invalid_observations_are_rejected(self) -> None:
+        saved = self.save()
+        missing_cap = self.core.record_observation(
+            capability_id="cap_missing",
+            observation_type="applicability",
+            summary="x",
+        )
+        self.assertEqual(missing_cap["error"]["code"], "CAPABILITY_NOT_FOUND")
+
+        wrong_version = self.core.record_observation(
+            capability_id=saved["capability_id"],
+            version_id="ver_missing",
+            observation_type="applicability",
+            summary="x",
+        )
+        self.assertEqual(wrong_version["error"]["code"], "INVALID_ARGUMENT")
+
+        bad_method = self.core.record_observation(
+            capability_id=saved["capability_id"],
+            observation_type="applicability",
+            summary="x",
+            generation_method="guess",
+        )
+        self.assertEqual(bad_method["error"]["code"], "INVALID_ARGUMENT")
+
+        bad_confidence = self.core.record_observation(
+            capability_id=saved["capability_id"],
+            observation_type="applicability",
+            summary="x",
+            confidence=1.5,
+        )
+        self.assertEqual(bad_confidence["error"]["code"], "INVALID_ARGUMENT")
+
+        bad_status = self.core.list_observations(status="done")
+        self.assertEqual(bad_status["error"]["code"], "INVALID_ARGUMENT")
+
+
 class EvolutionDecisionTest(CoreTest):
     case = "p1-decisions"
 
