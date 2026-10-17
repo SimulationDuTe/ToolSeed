@@ -43,7 +43,7 @@ from .evidence import (
 )
 from .manifest import CandidateError, content_hash, normalize_candidate, scan_content
 from .registry import STATUS_CANDIDATE, STATUS_QUARANTINED, STATUS_READY, Registry
-from .search import DEFAULT_RESULTS, MAX_RESULTS, Search
+from .search import DEFAULT_RESULTS, MAX_RESULTS, Search, tokens
 from .storage import Store
 
 
@@ -117,6 +117,69 @@ class ToolSeed:
         return payload
 
     # -- public APIs ------------------------------------------------------
+    def _possible_duplicates(
+        self,
+        manifest: dict[str, Any],
+        exclude_capability_id: str,
+    ) -> list[dict[str, Any]]:
+        """Deterministic similarity hints; never merges or blocks a save."""
+        target_tokens = tokens(manifest["name"])
+        for tag in manifest["tags"]:
+            target_tokens |= tokens(tag)
+        target_tokens |= tokens(manifest["description"])
+        target_tokens |= tokens(manifest["when_to_use"])
+        target_tags = set(manifest["tags"])
+
+        rows = self.store.db.execute(
+            "SELECT c.capability_id, v.manifest_json "
+            "FROM capabilities c JOIN capability_versions v "
+            "  ON v.capability_id = c.capability_id "
+            "WHERE c.capability_id != ? "
+            "  AND v.version_number = ("
+            "    SELECT MAX(v2.version_number) FROM capability_versions v2 "
+            "    WHERE v2.capability_id = c.capability_id)",
+            (exclude_capability_id,),
+        ).fetchall()
+
+        hints: list[dict[str, Any]] = []
+        for row in rows:
+            other = json.loads(row["manifest_json"])
+            reasons: list[str] = []
+            score = 0.0
+            if other.get("name") == manifest["name"]:
+                score = 1.0
+                reasons.append("same_name")
+
+            shared_tags = target_tags & set(other.get("tags") or [])
+            if len(shared_tags) >= 2:
+                score = max(score, 0.6)
+                reasons.append("shared_tags")
+
+            other_tokens = tokens(other.get("name", ""))
+            for tag in other.get("tags") or []:
+                other_tokens |= tokens(tag)
+            other_tokens |= tokens(other.get("description", ""))
+            other_tokens |= tokens(other.get("when_to_use", ""))
+            union = target_tokens | other_tokens
+            if union:
+                overlap = len(target_tokens & other_tokens) / len(union)
+                if overlap >= 0.3:
+                    score = max(score, overlap)
+                    reasons.append("similar_metadata")
+
+            if score > 0:
+                hints.append(
+                    {
+                        "capability_id": row["capability_id"],
+                        "name": other.get("name"),
+                        "score": round(score, 3),
+                        "reasons": reasons,
+                    }
+                )
+
+        hints.sort(key=lambda item: (-item["score"], item["name"] or ""))
+        return hints[:3]
+
     def toolbox_search(self, query: Any, context: Any = None) -> dict[str, Any]:
         result = self.search_engine.search(query, context)
         if "results" in result:
@@ -196,7 +259,10 @@ class ToolSeed:
                     version_id=existing["version_id"],
                     quantity=1,
                 )
-                return self._accepted(target_capability, existing, duplicate=True)
+                return {
+                    **self._accepted(target_capability, existing, duplicate=True),
+                    "possible_duplicates": [],
+                }
         else:
             existing_capability, existing_version = self.registry.find_capability_by_name_and_hash(
                 manifest["name"], digest
@@ -208,7 +274,10 @@ class ToolSeed:
                     version_id=existing_version["version_id"],
                     quantity=1,
                 )
-                return self._accepted(existing_capability, existing_version, duplicate=True)
+                return {
+                    **self._accepted(existing_capability, existing_version, duplicate=True),
+                    "possible_duplicates": [],
+                }
 
         if target_capability is not None:
             capability = target_capability
@@ -232,6 +301,9 @@ class ToolSeed:
             quantity=1,
         )
         response = self._accepted(capability, version, duplicate=False)
+        response["possible_duplicates"] = self._possible_duplicates(
+            manifest, capability["capability_id"]
+        )
         if verdict == "review":
             response["notes"] = reasons
         return response

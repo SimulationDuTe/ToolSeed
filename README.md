@@ -115,6 +115,8 @@ P0 只有一种候选传输格式：一个 JSON 对象，包含对象形式的 `
   Capability/Version，`duplicate: true`，不创建重复版本。
 - 提供 `target_capability_id` 时，该能力必须存在且未 `archived`；相同内容哈希返回既有版本，
   否则新增版本。
+- 非精确重复的新保存会在响应中返回 `possible_duplicates`，按同名、共享标签和元数据相似度
+  给出最多 3 条提示；它只用于人工判断，不阻塞保存，也不自动合并。
 - 内容检查分三档：
   - 明显的凭据/密钥或“绕过策略/泄露秘密”指令 → 拒绝保存，返回 `POLICY_BLOCKED`；
   - 破坏性或高风险操作（如 `rm -rf`、`drop table`）→ 允许保存，但版本保持 `candidate`，
@@ -185,6 +187,7 @@ P1 第一块已实现：
 - `expire_version_observations(...)`：策略/环境变化时显式让某版本观察失效；
 - `rollback_version`：受控回滚到更旧的 `ready` 版本，记录 `version_rolled_back` 事件；
 - `version_report()`：按版本汇总交付、任务结果、诊断、观察、证据有效性与回滚次数；
+- 保存候选时返回 `possible_duplicates`（同名、共享标签、元数据相似），只提示，不自动合并；
 - `toolbox_stats()` 增加评估计数、有效性分布、诊断状态、维护决策与观察计数。
 
 ### 重新验证流程
@@ -281,7 +284,7 @@ python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "v
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **140 项**测试，覆盖：
+当前 **143 项**测试，覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -295,7 +298,7 @@ python -m unittest discover -s tests -t . -v
 - CLI 的 save/run/record-outcome/stats/archive/release/release-version/promote-version/quarantine；
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
-- P1 证据与观察自动失效、维护报告、去重维护决策与应用、重新验证决策闭环、能力观察、版本报告与回滚、失败诊断、修复候选与统计；
+- P1 证据与观察自动失效、维护报告、去重维护决策与应用、重新验证决策闭环、能力观察、版本报告与回滚、失败诊断、修复候选、重复候选提示与统计；
 - schema 版本迁移、嵌套事务回滚、回滚/修复候选原子性、invocation 归属校验。
 
 ## 质量门禁
