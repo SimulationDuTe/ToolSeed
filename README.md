@@ -174,7 +174,8 @@ P1 第一块已实现：
   `ready` 版本；高风险内容仍会被拒绝；
 - 版本/能力隔离时自动把该版本相关证据追加为 `stale`，原始事件不改写；
 - `maintenance_report()`：汇总未评估/失效证据、重复失败与开放诊断，给出建议动作但不自动改能力；
-- `toolbox_stats()` 增加评估计数、有效性分布和诊断状态计数。
+- `run_maintenance()`：把建议转成去重的 `evolution_decisions`，供人工查看/驳回；
+- `toolbox_stats()` 增加评估计数、有效性分布、诊断状态与维护决策计数。
 
 ## 存储
 
@@ -187,6 +188,7 @@ P1 第一块已实现：
   - `evidence_events`：追加式事件，原始事件不被静默改写
   - `evidence_validity_assessments`：P1 证据有效性评估（追加式）
   - `failure_diagnoses`：P1 失败诊断与修复候选关联
+  - `evolution_decisions`：P1 维护建议/决策及去重键
 
 没有 `save_jobs`、`search_index`、`audit_events` 或 `cost_observations` 表；版本正文存在数据库中，
 不写 `content/` 文件。`content_hash` 由 `protocol_version`、Manifest 和 `content` 的确定性 JSON
@@ -206,6 +208,8 @@ P1 第一块已实现：
 - `assess_evidence(...)` / `evidence_validity(...)`：追加证据有效性评估并读取当前投影；
 - `expire_version_evidence(...)`：策略/环境变化时显式让某版本证据失效；
 - `maintenance_report()`：维护扫描，返回未评估/失效证据、重复失败和开放诊断；
+- `run_maintenance()`：把维护建议落地为去重的 `evolution_decisions`；
+- `list_evolution_decisions(...)` / `dismiss_evolution_decision(...)`：查看与驳回维护决策；
 - `diagnose_failure(...)` / `list_failure_diagnoses(...)` / `dismiss_diagnosis(...)`：失败诊断管理；
 - `propose_repair(...)`：根据开放诊断生成候选修复版本，不自动激活。
 
@@ -222,6 +226,9 @@ python -m toolseed release '{"capability_id": "cap_xxx", "reason": "incident rev
 python -m toolseed release-version '{"version_id": "ver_xxx", "reason": "reviewed"}'
 python -m toolseed promote-version '{"version_id": "ver_xxx", "reason": "content rechecked"}'
 python -m toolseed maintenance
+python -m toolseed maintenance-run
+python -m toolseed list-decisions '{"status": "proposed"}'
+python -m toolseed dismiss-decision '{"decision_id": "dec_xxx", "resolution": "handled"}'
 python -m toolseed archive '{"capability_id": "cap_xxx"}'
 python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "ver_xxx", "invocation_id": "inv_xxx", "outcome": "success", "source_type": "test_runner"}'
 ```
@@ -238,7 +245,7 @@ python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "v
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **123 项**测试，覆盖：
+当前 **125 项**测试，覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -252,7 +259,7 @@ python -m unittest discover -s tests -t . -v
 - CLI 的 save/run/record-outcome/stats/archive/release/release-version/promote-version/quarantine；
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
-- P1 证据有效性投影、自动失效、维护报告、失败诊断、修复候选与统计。
+- P1 证据有效性投影、自动失效、维护报告、去重维护决策、失败诊断、修复候选与统计。
 
 ## 价值对照实验
 
