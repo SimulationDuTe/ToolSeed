@@ -101,6 +101,24 @@ CREATE TABLE IF NOT EXISTS evolution_decisions (
 );
 CREATE INDEX IF NOT EXISTS idx_decisions_status
   ON evolution_decisions(status, created_at);
+
+CREATE TABLE IF NOT EXISTS capability_observations (
+  observation_id TEXT PRIMARY KEY,
+  capability_id TEXT NOT NULL,
+  version_id TEXT,
+  evidence_ids_json TEXT NOT NULL,
+  observation_type TEXT NOT NULL,
+  applicability_json TEXT,
+  generation_method TEXT NOT NULL CHECK(generation_method IN ('rule', 'model', 'human')),
+  status TEXT NOT NULL CHECK(status IN ('active', 'stale', 'retracted')),
+  confidence REAL,
+  summary TEXT NOT NULL,
+  status_reason TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_observations_capability
+  ON capability_observations(capability_id, created_at);
 """
 
 

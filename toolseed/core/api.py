@@ -32,6 +32,8 @@ from .evidence import (
     EVENT_VERSION_PROMOTED,
     EVENT_VERSION_RELEASED,
     FAILURE_CATEGORIES,
+    OBSERVATION_METHODS,
+    OBSERVATION_STATUSES,
     OUTCOMES,
     SOURCE_TYPES,
     VALIDITIES,
@@ -314,6 +316,7 @@ class ToolSeed:
             },
             "failure_diagnoses": self.evidence.diagnosis_counts(),
             "evolution_decisions": self.evidence.decision_counts(),
+            "observations": self.evidence.observation_counts(),
             "task_outcomes": {
                 "signals": signals,
                 "measured": signals > 0,
@@ -672,6 +675,122 @@ class ToolSeed:
             "ok": True,
             "decision": self.evidence.get_decision(decision_id),
             "dismissed": True,
+        }
+
+    def record_observation(
+        self,
+        *,
+        capability_id: Any,
+        observation_type: Any,
+        summary: Any,
+        version_id: Any = None,
+        evidence_ids: Any = None,
+        applicability: Any = None,
+        generation_method: Any = "human",
+        confidence: Any = None,
+    ) -> dict[str, Any]:
+        if not isinstance(capability_id, str):
+            return error_response(INVALID_ARGUMENT, "capability_id must be a string")
+        if not isinstance(observation_type, str) or not observation_type.strip():
+            return error_response(
+                INVALID_ARGUMENT, "observation_type must be a non-empty string"
+            )
+        if not isinstance(summary, str) or not summary.strip():
+            return error_response(INVALID_ARGUMENT, "summary must be a non-empty string")
+        if version_id is not None and not isinstance(version_id, str):
+            return error_response(INVALID_ARGUMENT, "version_id must be a string")
+        if generation_method not in OBSERVATION_METHODS:
+            return error_response(
+                INVALID_ARGUMENT,
+                "generation_method must be one of: " + ", ".join(OBSERVATION_METHODS),
+            )
+        if applicability is not None and not isinstance(applicability, dict):
+            return error_response(INVALID_ARGUMENT, "applicability must be an object")
+        if confidence is not None and (
+            isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not 0 <= float(confidence) <= 1
+        ):
+            return error_response(INVALID_ARGUMENT, "confidence must be between 0 and 1")
+
+        capability = self.registry.get_capability(capability_id)
+        if capability is None:
+            return error_response(CAPABILITY_NOT_FOUND, "no capability matches that id")
+        if version_id is not None:
+            version = self.registry.get_version(version_id)
+            if version is None or version["capability_id"] != capability_id:
+                return error_response(
+                    INVALID_ARGUMENT,
+                    "version_id does not belong to that capability",
+                )
+
+        if evidence_ids is None:
+            ids: list[str] = []
+        elif isinstance(evidence_ids, list) and all(
+            isinstance(item, str) for item in evidence_ids
+        ):
+            ids = evidence_ids
+        else:
+            return error_response(INVALID_ARGUMENT, "evidence_ids must be an array of strings")
+        for evidence_id in ids:
+            if not self.evidence.evidence_exists(evidence_id):
+                return error_response(INVALID_ARGUMENT, f"evidence_id does not exist: {evidence_id}")
+
+        observation = self.evidence.create_observation(
+            capability_id=capability_id,
+            version_id=version_id,
+            observation_type=observation_type.strip(),
+            summary=summary.strip()[:2000],
+            evidence_ids=ids,
+            applicability=applicability,
+            generation_method=generation_method,
+            confidence=float(confidence) if confidence is not None else None,
+        )
+        return {"ok": True, "observation": observation}
+
+    def list_observations(
+        self,
+        *,
+        capability_id: Any = None,
+        version_id: Any = None,
+        status: Any = None,
+    ) -> dict[str, Any]:
+        for name, value in (("capability_id", capability_id), ("version_id", version_id)):
+            if value is not None and not isinstance(value, str):
+                return error_response(INVALID_ARGUMENT, f"{name} must be a string")
+        if status is not None and status not in OBSERVATION_STATUSES:
+            return error_response(INVALID_ARGUMENT, "unsupported observation status")
+        return {
+            "ok": True,
+            "observations": self.evidence.list_observations(
+                capability_id=capability_id,
+                version_id=version_id,
+                status=status,
+            ),
+        }
+
+    def set_observation_status(
+        self,
+        observation_id: Any,
+        status: Any,
+        reason: Any = None,
+    ) -> dict[str, Any]:
+        if not isinstance(observation_id, str):
+            return error_response(INVALID_ARGUMENT, "observation_id must be a string")
+        if status not in OBSERVATION_STATUSES:
+            return error_response(INVALID_ARGUMENT, "unsupported observation status")
+        if reason is not None and not isinstance(reason, str):
+            return error_response(INVALID_ARGUMENT, "reason must be a string")
+        observation = self.evidence.get_observation(observation_id)
+        if observation is None:
+            return error_response(INVALID_ARGUMENT, "observation_id does not exist")
+        if observation["status"] == status:
+            return {"ok": True, "observation": observation, "changed": False}
+        self.evidence.set_observation_status(observation_id, status, reason)
+        return {
+            "ok": True,
+            "observation": self.evidence.get_observation(observation_id),
+            "changed": True,
         }
 
     def diagnose_failure(

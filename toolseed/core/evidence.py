@@ -16,6 +16,8 @@ from .storage import Store
 OUTCOMES = ("success", "failure", "partial", "unknown")
 SOURCE_TYPES = ("core", "agent", "harness", "test_runner", "external_system", "human")
 VALIDITIES = ("valid", "stale", "superseded")
+OBSERVATION_METHODS = ("rule", "model", "human")
+OBSERVATION_STATUSES = ("active", "stale", "retracted")
 FAILURE_CATEGORIES = (
     "retrieval_mismatch",
     "applicability_mismatch",
@@ -524,6 +526,116 @@ class Evidence:
         ).fetchall():
             counts[row["status"]] = int(row["n"])
         return counts
+
+    # -- capability observations (P1) ------------------------------------
+    def create_observation(
+        self,
+        *,
+        capability_id: str,
+        observation_type: str,
+        summary: str,
+        version_id: str | None = None,
+        evidence_ids: list[str] | None = None,
+        applicability: dict[str, Any] | None = None,
+        generation_method: str = "human",
+        confidence: float | None = None,
+    ) -> dict[str, Any]:
+        observation_id = new_id("obs")
+        stamp = now()
+        with self.store.transaction() as db:
+            db.execute(
+                "INSERT INTO capability_observations "
+                "(observation_id, capability_id, version_id, evidence_ids_json, "
+                "observation_type, applicability_json, generation_method, status, "
+                "confidence, summary, status_reason, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL, ?, ?)",
+                (
+                    observation_id,
+                    capability_id,
+                    version_id,
+                    json.dumps(evidence_ids or [], ensure_ascii=False),
+                    observation_type,
+                    json.dumps(applicability, ensure_ascii=False, sort_keys=True)
+                    if applicability is not None
+                    else None,
+                    generation_method,
+                    confidence,
+                    summary,
+                    stamp,
+                    stamp,
+                ),
+            )
+        return self.get_observation(observation_id)  # type: ignore[return-value]
+
+    def get_observation(self, observation_id: str) -> dict[str, Any] | None:
+        row = self.store.db.execute(
+            "SELECT * FROM capability_observations WHERE observation_id = ?",
+            (observation_id,),
+        ).fetchone()
+        return self._observation_dict(row) if row is not None else None
+
+    def list_observations(
+        self,
+        *,
+        capability_id: str | None = None,
+        version_id: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM capability_observations WHERE 1 = 1"
+        params: list[Any] = []
+        if capability_id is not None:
+            query += " AND capability_id = ?"
+            params.append(capability_id)
+        if version_id is not None:
+            query += " AND version_id = ?"
+            params.append(version_id)
+        if status is not None:
+            query += " AND status = ?"
+            params.append(status)
+        query += " ORDER BY created_at, rowid"
+        rows = self.store.db.execute(query, params).fetchall()
+        return [self._observation_dict(row) for row in rows]
+
+    def set_observation_status(
+        self,
+        observation_id: str,
+        status: str,
+        reason: str | None = None,
+    ) -> None:
+        with self.store.transaction() as db:
+            db.execute(
+                "UPDATE capability_observations SET status = ?, status_reason = ?, "
+                "updated_at = ? WHERE observation_id = ?",
+                (status, reason, now(), observation_id),
+            )
+
+    def observation_counts(self) -> dict[str, int]:
+        counts = {"active": 0, "stale": 0, "retracted": 0}
+        for row in self.store.db.execute(
+            "SELECT status, COUNT(*) AS n FROM capability_observations GROUP BY status"
+        ).fetchall():
+            counts[row["status"]] = int(row["n"])
+        return counts
+
+    @staticmethod
+    def _observation_dict(row: Any) -> dict[str, Any]:
+        return {
+            "observation_id": row["observation_id"],
+            "capability_id": row["capability_id"],
+            "version_id": row["version_id"],
+            "evidence_ids": json.loads(row["evidence_ids_json"] or "[]"),
+            "observation_type": row["observation_type"],
+            "applicability": json.loads(row["applicability_json"])
+            if row["applicability_json"]
+            else None,
+            "generation_method": row["generation_method"],
+            "status": row["status"],
+            "confidence": row["confidence"],
+            "summary": row["summary"],
+            "status_reason": row["status_reason"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
 
     @staticmethod
     def _decision_dict(row: Any) -> dict[str, Any]:

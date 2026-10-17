@@ -36,6 +36,9 @@ def main(argv: list[str] | None = None) -> int:
             "maintenance-run",
             "list-decisions",
             "dismiss-decision",
+            "record-observation",
+            "list-observations",
+            "set-observation-status",
             "archive",
             "record-outcome",
         ],
@@ -107,6 +110,29 @@ def main(argv: list[str] | None = None) -> int:
             result = app.dismiss_evolution_decision(
                 payload.get("decision_id"),
                 payload.get("resolution"),
+            )
+        elif namespace.operation == "record-observation":
+            result = app.record_observation(
+                capability_id=payload.get("capability_id"),
+                observation_type=payload.get("observation_type"),
+                summary=payload.get("summary"),
+                version_id=payload.get("version_id"),
+                evidence_ids=payload.get("evidence_ids"),
+                applicability=payload.get("applicability"),
+                generation_method=payload.get("generation_method", "human"),
+                confidence=payload.get("confidence"),
+            )
+        elif namespace.operation == "list-observations":
+            result = app.list_observations(
+                capability_id=payload.get("capability_id"),
+                version_id=payload.get("version_id"),
+                status=payload.get("status"),
+            )
+        elif namespace.operation == "set-observation-status":
+            result = app.set_observation_status(
+                payload.get("observation_id"),
+                payload.get("status"),
+                payload.get("reason"),
             )
         elif namespace.operation == "archive":
             result = app.archive(
