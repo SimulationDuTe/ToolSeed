@@ -349,6 +349,9 @@ class ToolSeed:
             )
             for version in self.registry.list_versions(capability_id)
         )
+        observations_invalidated = self.evidence.invalidate_observations_for_capability(
+            capability_id, "capability_quarantined"
+        )
         self.evidence.record(
             EVENT_QUARANTINED, capability_id=capability_id, summary=str(reason)[:200]
         )
@@ -357,6 +360,7 @@ class ToolSeed:
             "capability_id": capability_id,
             "quarantined": True,
             "evidence_invalidated": invalidated,
+            "observations_invalidated": observations_invalidated,
         }
 
     def quarantine_version(self, version_id: Any, reason: str = "manual quarantine") -> dict[str, Any]:
@@ -374,11 +378,15 @@ class ToolSeed:
         invalidated = self.evidence.invalidate_evidence_for_version(
             version_id, "version_quarantined"
         )
+        observations_invalidated = self.evidence.invalidate_observations_for_version(
+            version_id, "version_quarantined"
+        )
         return {
             "ok": True,
             "version_id": version_id,
             "status": STATUS_QUARANTINED,
             "evidence_invalidated": invalidated,
+            "observations_invalidated": observations_invalidated,
         }
 
     def release_capability(
@@ -655,6 +663,27 @@ class ToolSeed:
         if self.registry.get_version(version_id) is None:
             return error_response(INVALID_ARGUMENT, "version_id does not exist")
         changed = self.evidence.invalidate_evidence_for_version(
+            version_id, reason_code.strip()
+        )
+        return {
+            "ok": True,
+            "version_id": version_id,
+            "invalidated": changed,
+            "reason_code": reason_code.strip(),
+        }
+
+    def expire_version_observations(
+        self,
+        version_id: Any,
+        reason_code: Any = "policy_or_environment_changed",
+    ) -> dict[str, Any]:
+        if not isinstance(version_id, str):
+            return error_response(INVALID_ARGUMENT, "version_id must be a string")
+        if not isinstance(reason_code, str) or not reason_code.strip():
+            return error_response(INVALID_ARGUMENT, "reason_code must be a non-empty string")
+        if self.registry.get_version(version_id) is None:
+            return error_response(INVALID_ARGUMENT, "version_id does not exist")
+        changed = self.evidence.invalidate_observations_for_version(
             version_id, reason_code.strip()
         )
         return {
@@ -1004,8 +1033,16 @@ class ToolSeed:
         if capability is None:
             return error_response(CAPABILITY_NOT_FOUND, "no capability matches that id")
         self.registry.archive(capability_id)
+        observations_invalidated = self.evidence.invalidate_observations_for_capability(
+            capability_id, "capability_archived"
+        )
         self.evidence.record(EVENT_ARCHIVED, capability_id=capability_id, summary=str(reason)[:200])
-        return {"ok": True, "capability_id": capability_id, "archived": True}
+        return {
+            "ok": True,
+            "capability_id": capability_id,
+            "archived": True,
+            "observations_invalidated": observations_invalidated,
+        }
 
     def record_task_outcome(
         self,

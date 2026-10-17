@@ -41,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
             "record-observation",
             "list-observations",
             "set-observation-status",
+            "expire-version-observations",
             "archive",
             "record-outcome",
         ],
@@ -144,6 +145,11 @@ def main(argv: list[str] | None = None) -> int:
                 payload.get("observation_id"),
                 payload.get("status"),
                 payload.get("reason"),
+            )
+        elif namespace.operation == "expire-version-observations":
+            result = app.expire_version_observations(
+                payload.get("version_id"),
+                payload.get("reason_code", "policy_or_environment_changed"),
             )
         elif namespace.operation == "archive":
             result = app.archive(

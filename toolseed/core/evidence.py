@@ -618,6 +618,32 @@ class Evidence:
             counts[row["status"]] = int(row["n"])
         return counts
 
+    def invalidate_observations_for_version(
+        self,
+        version_id: str,
+        reason: str,
+    ) -> int:
+        with self.store.transaction() as db:
+            cursor = db.execute(
+                "UPDATE capability_observations SET status = 'stale', status_reason = ?, "
+                "updated_at = ? WHERE version_id = ? AND status = 'active'",
+                (reason, now(), version_id),
+            )
+            return int(cursor.rowcount)
+
+    def invalidate_observations_for_capability(
+        self,
+        capability_id: str,
+        reason: str,
+    ) -> int:
+        with self.store.transaction() as db:
+            cursor = db.execute(
+                "UPDATE capability_observations SET status = 'stale', status_reason = ?, "
+                "updated_at = ? WHERE capability_id = ? AND status = 'active'",
+                (reason, now(), capability_id),
+            )
+            return int(cursor.rowcount)
+
     def version_stats(self, version_id: str) -> dict[str, Any] | None:
         version = self.store.db.execute(
             "SELECT version_id, capability_id, version_number, content_hash, status "
