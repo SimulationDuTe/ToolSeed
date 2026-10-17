@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "toolseed"
+version = "0.3.0"
+description = "ToolSeed P0: store, retrieve and deliver reusable agent procedures"
+requires-python = ">=3.11"
+
+[project.scripts]
+toolseed = "toolseed.cli:main"
+
+[tool.setuptools]
+packages = ["toolseed", "toolseed.core", "toolseed.adapters"]
+
+[tool.setuptools.package-data]
+toolseed = ["skill/*.md"]
