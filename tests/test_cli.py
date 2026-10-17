@@ -204,3 +204,9 @@ class CliTest(unittest.TestCase):
             str(BASE),
         )
         self.assertTrue(delivered["ok"], delivered)
+
+    def test_maintenance_report(self) -> None:
+        code, report = call("maintenance", "--data-dir", str(BASE))
+        self.assertEqual(code, 0)
+        self.assertIn("report", report)
+        self.assertIn("validity", report["report"])
