@@ -33,6 +33,9 @@ def main(argv: list[str] | None = None) -> int:
             "release-version",
             "promote-version",
             "maintenance",
+            "maintenance-run",
+            "list-decisions",
+            "dismiss-decision",
             "archive",
             "record-outcome",
         ],
@@ -93,6 +96,18 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif namespace.operation == "maintenance":
             result = app.maintenance_report()
+        elif namespace.operation == "maintenance-run":
+            result = app.run_maintenance()
+        elif namespace.operation == "list-decisions":
+            result = app.list_evolution_decisions(
+                status=payload.get("status"),
+                capability_id=payload.get("capability_id"),
+            )
+        elif namespace.operation == "dismiss-decision":
+            result = app.dismiss_evolution_decision(
+                payload.get("decision_id"),
+                payload.get("resolution"),
+            )
         elif namespace.operation == "archive":
             result = app.archive(
                 payload.get("capability_id"), payload.get("reason", "manual archive")

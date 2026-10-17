@@ -441,6 +441,106 @@ class Evidence:
             counts[row["status"]] = int(row["n"])
         return counts
 
+    # -- evolution decisions (P1 maintenance) ----------------------------
+    def create_decision(
+        self,
+        *,
+        action: str,
+        reason: str,
+        dedup_key: str,
+        capability_id: str | None = None,
+        version_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        existing = self.get_decision_by_dedup(dedup_key)
+        if existing is not None:
+            return existing, False
+        decision_id = new_id("dec")
+        stamp = now()
+        with self.store.transaction() as db:
+            db.execute(
+                "INSERT INTO evolution_decisions "
+                "(decision_id, dedup_key, action, reason, capability_id, version_id, "
+                "status, payload_json, resolution, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'proposed', ?, NULL, ?, ?)",
+                (
+                    decision_id,
+                    dedup_key,
+                    action,
+                    reason,
+                    capability_id,
+                    version_id,
+                    json.dumps(payload, ensure_ascii=False, sort_keys=True)
+                    if payload is not None
+                    else None,
+                    stamp,
+                    stamp,
+                ),
+            )
+        return self.get_decision(decision_id), True  # type: ignore[return-value]
+
+    def get_decision(self, decision_id: str) -> dict[str, Any] | None:
+        row = self.store.db.execute(
+            "SELECT * FROM evolution_decisions WHERE decision_id = ?", (decision_id,)
+        ).fetchone()
+        return self._decision_dict(row) if row is not None else None
+
+    def get_decision_by_dedup(self, dedup_key: str) -> dict[str, Any] | None:
+        row = self.store.db.execute(
+            "SELECT * FROM evolution_decisions WHERE dedup_key = ?", (dedup_key,)
+        ).fetchone()
+        return self._decision_dict(row) if row is not None else None
+
+    def list_decisions(
+        self,
+        *,
+        status: str | None = None,
+        capability_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM evolution_decisions WHERE 1 = 1"
+        params: list[Any] = []
+        if status is not None:
+            query += " AND status = ?"
+            params.append(status)
+        if capability_id is not None:
+            query += " AND capability_id = ?"
+            params.append(capability_id)
+        query += " ORDER BY created_at, rowid"
+        rows = self.store.db.execute(query, params).fetchall()
+        return [self._decision_dict(row) for row in rows]
+
+    def dismiss_decision(self, decision_id: str, resolution: str | None = None) -> None:
+        with self.store.transaction() as db:
+            db.execute(
+                "UPDATE evolution_decisions SET status = 'dismissed', resolution = ?, "
+                "updated_at = ? WHERE decision_id = ?",
+                (resolution, now(), decision_id),
+            )
+
+    def decision_counts(self) -> dict[str, int]:
+        counts = {"proposed": 0, "applied": 0, "dismissed": 0}
+        for row in self.store.db.execute(
+            "SELECT status, COUNT(*) AS n FROM evolution_decisions GROUP BY status"
+        ).fetchall():
+            counts[row["status"]] = int(row["n"])
+        return counts
+
+    @staticmethod
+    def _decision_dict(row: Any) -> dict[str, Any]:
+        return {
+            "decision_id": row["decision_id"],
+            "dedup_key": row["dedup_key"],
+            "action": row["action"],
+            "reason": row["reason"],
+            "capability_id": row["capability_id"],
+            "version_id": row["version_id"],
+            "status": row["status"],
+            "payload": json.loads(row["payload_json"]) if row["payload_json"] else None,
+            "resolution": row["resolution"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
     @staticmethod
     def _assessment_dict(row: Any) -> dict[str, Any]:
         return {

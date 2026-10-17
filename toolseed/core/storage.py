@@ -85,6 +85,22 @@ CREATE TABLE IF NOT EXISTS failure_diagnoses (
 );
 CREATE INDEX IF NOT EXISTS idx_diagnoses_capability
   ON failure_diagnoses(capability_id, created_at);
+
+CREATE TABLE IF NOT EXISTS evolution_decisions (
+  decision_id TEXT PRIMARY KEY,
+  dedup_key TEXT NOT NULL UNIQUE,
+  action TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  capability_id TEXT,
+  version_id TEXT,
+  status TEXT NOT NULL CHECK(status IN ('proposed', 'applied', 'dismissed')),
+  payload_json TEXT,
+  resolution TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_decisions_status
+  ON evolution_decisions(status, created_at);
 """
 
 

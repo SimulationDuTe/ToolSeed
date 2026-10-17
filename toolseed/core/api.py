@@ -313,6 +313,7 @@ class ToolSeed:
                 "validity": self.evidence.validity_counts(),
             },
             "failure_diagnoses": self.evidence.diagnosis_counts(),
+            "evolution_decisions": self.evidence.decision_counts(),
             "task_outcomes": {
                 "signals": signals,
                 "measured": signals > 0,
@@ -597,6 +598,81 @@ class ToolSeed:
 
     def maintenance_report(self) -> dict[str, Any]:
         return {"ok": True, "report": self.evidence.maintenance_report()}
+
+    def run_maintenance(self) -> dict[str, Any]:
+        report = self.evidence.maintenance_report()
+        created: list[dict[str, Any]] = []
+        skipped = 0
+        for suggestion in report["suggestions"]:
+            action = str(suggestion.get("action"))
+            reason = str(suggestion.get("reason"))
+            capability_id = suggestion.get("capability_id")
+            version_id = suggestion.get("version_id")
+            dedup_key = ":".join(
+                (
+                    action,
+                    reason,
+                    str(capability_id or "-"),
+                    str(version_id or "-"),
+                )
+            )
+            decision, is_new = self.evidence.create_decision(
+                action=action,
+                reason=reason,
+                dedup_key=dedup_key,
+                capability_id=capability_id,
+                version_id=version_id,
+                payload=suggestion,
+            )
+            if is_new:
+                created.append(decision)
+            else:
+                skipped += 1
+        return {
+            "ok": True,
+            "report": report,
+            "created": created,
+            "skipped": skipped,
+        }
+
+    def list_evolution_decisions(
+        self,
+        *,
+        status: Any = None,
+        capability_id: Any = None,
+    ) -> dict[str, Any]:
+        if status is not None and status not in ("proposed", "applied", "dismissed"):
+            return error_response(INVALID_ARGUMENT, "unsupported decision status")
+        if capability_id is not None and not isinstance(capability_id, str):
+            return error_response(INVALID_ARGUMENT, "capability_id must be a string")
+        return {
+            "ok": True,
+            "decisions": self.evidence.list_decisions(
+                status=status,
+                capability_id=capability_id,
+            ),
+        }
+
+    def dismiss_evolution_decision(
+        self,
+        decision_id: Any,
+        resolution: Any = None,
+    ) -> dict[str, Any]:
+        if not isinstance(decision_id, str):
+            return error_response(INVALID_ARGUMENT, "decision_id must be a string")
+        if resolution is not None and not isinstance(resolution, str):
+            return error_response(INVALID_ARGUMENT, "resolution must be a string")
+        decision = self.evidence.get_decision(decision_id)
+        if decision is None:
+            return error_response(INVALID_ARGUMENT, "decision_id does not exist")
+        if decision["status"] == "dismissed":
+            return {"ok": True, "decision": decision, "dismissed": False}
+        self.evidence.dismiss_decision(decision_id, resolution)
+        return {
+            "ok": True,
+            "decision": self.evidence.get_decision(decision_id),
+            "dismissed": True,
+        }
 
     def diagnose_failure(
         self,
