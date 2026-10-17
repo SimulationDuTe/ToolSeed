@@ -6,6 +6,77 @@ from tests.helpers import CONTENT, CoreTest, candidate
 REVIEW_CONTENT = CONTENT + "\n4. 清理前确认后执行 rm -rf /tmp/cache。"
 
 
+class VersionRollbackTest(CoreTest):
+    case = "version-rollback"
+
+    def _two_ready(self) -> tuple[dict, dict]:
+        first = self.save()
+        second = self.core.toolbox_save(
+            candidate(
+                content=CONTENT + "\n4. 新版本。",
+                target_capability_id=first["capability_id"],
+            ),
+            "version two",
+        )
+        return first, second
+
+    def test_rollback_to_older_ready_restores_delivery_and_records_event(self) -> None:
+        first, second = self._two_ready()
+        self.assertEqual(self.core.toolbox_run(first["capability_id"])["version"], 2)
+
+        result = self.core.rollback_version(
+            first["capability_id"], first["version_id"], "regression in v2"
+        )
+        self.assertTrue(result["rolled_back"], result)
+        self.assertEqual(result["previous_version_id"], second["version_id"])
+
+        delivered = self.core.toolbox_run(first["capability_id"])
+        self.assertEqual(delivered["version"], 1)
+        self.assertEqual(delivered["result"]["content"], CONTENT)
+        card = self.core.toolbox_search("timeout")["results"][0]
+        self.assertEqual(card["version"], 1)
+
+        event = self.core.store.db.execute(
+            "SELECT summary FROM evidence_events WHERE event_type = 'version_rolled_back'"
+        ).fetchone()
+        self.assertIsNotNone(event)
+        self.assertIn("regression in v2", event["summary"])
+
+    def test_rollback_rejects_invalid_targets(self) -> None:
+        first, second = self._two_ready()
+        no_op = self.core.rollback_version(
+            first["capability_id"], second["version_id"], "no-op"
+        )
+        self.assertFalse(no_op["rolled_back"])
+
+        self.core.rollback_version(
+            first["capability_id"], first["version_id"], "back to one"
+        )
+        newer = self.core.rollback_version(
+            first["capability_id"], second["version_id"], "not older"
+        )
+        self.assertEqual(newer["error"]["code"], "INVALID_ARGUMENT")
+
+        self.assertEqual(
+            self.core.rollback_version(first["capability_id"], "ver_missing", "x")[
+                "error"
+            ]["code"],
+            "INVALID_ARGUMENT",
+        )
+        self.assertEqual(
+            self.core.rollback_version(first["capability_id"], first["version_id"], " ")[
+                "error"
+            ]["code"],
+            "INVALID_ARGUMENT",
+        )
+
+        self.core.archive(first["capability_id"], "retired")
+        archived = self.core.rollback_version(
+            first["capability_id"], first["version_id"], "x"
+        )
+        self.assertEqual(archived["error"]["code"], "CAPABILITY_ARCHIVED")
+
+
 class LifecycleTest(CoreTest):
     case = "lifecycle"
 

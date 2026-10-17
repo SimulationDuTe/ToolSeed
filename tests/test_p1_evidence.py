@@ -142,6 +142,53 @@ class EvidenceValidityTest(CoreTest):
         self.assertEqual(suggestions[0]["suggested_category"], "task_failure_attributed")
 
 
+class VersionReportTest(CoreTest):
+    case = "p1-version-report"
+
+    def test_version_report_aggregates_delivery_outcomes_and_observations(self) -> None:
+        saved = self.save()
+        delivered = self.core.toolbox_run(saved["capability_id"])
+        self.assertTrue(delivered["ok"], delivered)
+
+        for outcome in ("success", "failure"):
+            self.core.record_task_outcome(
+                capability_id=saved["capability_id"],
+                version_id=saved["version_id"],
+                invocation_id=delivered["invocation_id"],
+                outcome=outcome,
+                source_type="test_runner",
+                task_id="report",
+            )
+        self.core.diagnose_failure(
+            capability_id=saved["capability_id"],
+            version_id=saved["version_id"],
+            category="procedure_ambiguity",
+            summary="needs clarification",
+        )
+        self.core.record_observation(
+            capability_id=saved["capability_id"],
+            version_id=saved["version_id"],
+            observation_type="applicability",
+            summary="only in local harness",
+            generation_method="human",
+        )
+
+        report = self.core.version_report(saved["version_id"])
+        self.assertTrue(report["ok"], report)
+        data = report["report"]
+        self.assertEqual(data["version_id"], saved["version_id"])
+        self.assertEqual(data["deliveries"], 1)
+        self.assertEqual(data["task_outcomes"]["success"], 1)
+        self.assertEqual(data["task_outcomes"]["failure"], 1)
+        self.assertEqual(data["diagnoses"]["open"], 1)
+        self.assertEqual(data["observations"]["active"], 1)
+        self.assertEqual(data["rollbacks"], 0)
+        self.assertEqual(data["status"], "ready")
+
+        missing = self.core.version_report("ver_missing")
+        self.assertEqual(missing["error"]["code"], "INVALID_ARGUMENT")
+
+
 class ObservationTest(CoreTest):
     case = "p1-observations"
 
