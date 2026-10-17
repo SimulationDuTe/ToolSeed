@@ -172,6 +172,8 @@ P1 第一块已实现：
 - `failure_diagnoses`：按稳定失败类别记录能力/版本级诊断，关联调用、任务和证据；
 - `propose_repair`：基于开放诊断生成**候选**修复版本，强制保持 `candidate`，不会自动替换当前
   `ready` 版本；高风险内容仍会被拒绝；
+- 版本/能力隔离时自动把该版本相关证据追加为 `stale`，原始事件不改写；
+- `maintenance_report()`：汇总未评估/失效证据、重复失败与开放诊断，给出建议动作但不自动改能力；
 - `toolbox_stats()` 增加评估计数、有效性分布和诊断状态计数。
 
 ## 存储
@@ -202,6 +204,8 @@ P1 第一块已实现：
 - `archive(capability_id, reason)`：退役一个能力；
 - `record_task_outcome(...)`：显式记录带来源的任务结果信号；
 - `assess_evidence(...)` / `evidence_validity(...)`：追加证据有效性评估并读取当前投影；
+- `expire_version_evidence(...)`：策略/环境变化时显式让某版本证据失效；
+- `maintenance_report()`：维护扫描，返回未评估/失效证据、重复失败和开放诊断；
 - `diagnose_failure(...)` / `list_failure_diagnoses(...)` / `dismiss_diagnosis(...)`：失败诊断管理；
 - `propose_repair(...)`：根据开放诊断生成候选修复版本，不自动激活。
 
@@ -217,6 +221,7 @@ python -m toolseed quarantine-version '{"version_id": "ver_xxx"}'
 python -m toolseed release '{"capability_id": "cap_xxx", "reason": "incident reviewed", "evidence_ref": "ticket-1"}'
 python -m toolseed release-version '{"version_id": "ver_xxx", "reason": "reviewed"}'
 python -m toolseed promote-version '{"version_id": "ver_xxx", "reason": "content rechecked"}'
+python -m toolseed maintenance
 python -m toolseed archive '{"capability_id": "cap_xxx"}'
 python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "ver_xxx", "invocation_id": "inv_xxx", "outcome": "success", "source_type": "test_runner"}'
 ```
@@ -233,7 +238,7 @@ python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "v
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **119 项**测试，覆盖：
+当前 **123 项**测试，覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -247,7 +252,7 @@ python -m unittest discover -s tests -t . -v
 - CLI 的 save/run/record-outcome/stats/archive/release/release-version/promote-version/quarantine；
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
-- P1 证据有效性投影、失败诊断、修复候选与统计。
+- P1 证据有效性投影、自动失效、维护报告、失败诊断、修复候选与统计。
 
 ## 价值对照实验
 
@@ -287,7 +292,7 @@ python -m benchmarks.live_experiment --mode command \
 已实现（P0 + P1 第一块）：四个固定 API、Capability/Version/Invocation/Evidence 模型、不可变版本与
 内容哈希、唯一 `procedure` 表示、Manifest 校验、关键词检索与硬筛选、Procedure 交付、
 本地 SQLite 持久化、能力/版本隔离与退役、能力级隔离解除、版本解除与候选提升、证据有效性评估、
-失败诊断与修复候选、`LocalAdapter` 与 Skill、价值对照实验骨架、live A/B 实验框架。
+自动失效与维护报告、失败诊断与修复候选、`LocalAdapter` 与 Skill、价值对照实验骨架、live A/B 实验框架。
 
 尚未实现：`executable` / `workflow`（`kind` 不是 `procedure` 时返回
 `UNSUPPORTED_CAPABILITY_KIND`）、代码执行与沙箱、多文件/ZIP 能力包、向量检索或 LLM 重排、
