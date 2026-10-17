@@ -121,6 +121,10 @@ CREATE INDEX IF NOT EXISTS idx_observations_capability
   ON capability_observations(capability_id, created_at);
 """
 
+MIGRATIONS: dict[int, str] = {
+    1: SCHEMA,
+}
+
 
 class Store:
     def __init__(self, root: str | Path) -> None:
@@ -129,18 +133,37 @@ class Store:
         self.db = sqlite3.connect(self.root / "toolseed.sqlite3")
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.executescript(SCHEMA)
+        self._tx_depth = 0
+        self._migrate()
+
+    def _migrate(self) -> None:
+        current = int(self.db.execute("PRAGMA user_version").fetchone()[0])
+        for version in sorted(MIGRATIONS):
+            if version <= current:
+                continue
+            self.db.executescript(MIGRATIONS[version])
+            self.db.execute(f"PRAGMA user_version = {version}")
         self.db.commit()
+
+    @property
+    def schema_version(self) -> int:
+        return int(self.db.execute("PRAGMA user_version").fetchone()[0])
 
     @contextlib.contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
+        outer = self._tx_depth == 0
+        self._tx_depth += 1
         try:
             yield self.db
-        except Exception:
-            self.db.rollback()
+        except BaseException:
+            self._tx_depth -= 1
+            if outer:
+                self.db.rollback()
             raise
         else:
-            self.db.commit()
+            self._tx_depth -= 1
+            if outer:
+                self.db.commit()
 
     def close(self) -> None:
         self.db.close()

@@ -46,6 +46,12 @@ from .search import DEFAULT_RESULTS, MAX_RESULTS, Search
 from .storage import Store
 
 
+class _CandidateRejected(Exception):
+    def __init__(self, response: dict[str, Any]) -> None:
+        super().__init__("candidate rejected")
+        self.response = response
+
+
 class ToolSeed:
     """Local P0 core. Harness adapters call this; they do not reach into storage."""
 
@@ -127,6 +133,27 @@ class ToolSeed:
         *,
         force_candidate: bool = False,
     ) -> dict[str, Any]:
+        try:
+            with self.store.transaction():
+                return self._save_candidate_impl(
+                    candidate,
+                    intent,
+                    context,
+                    force_candidate=force_candidate,
+                )
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "candidate could not be durably persisted"
+            )
+
+    def _save_candidate_impl(
+        self,
+        candidate: Any,
+        intent: Any = "",
+        context: Any = None,
+        *,
+        force_candidate: bool = False,
+    ) -> dict[str, Any]:
         if not isinstance(intent, str):
             return error_response(INVALID_ARGUMENT, "intent must be a string")
         if context is not None and not isinstance(context, dict):
@@ -182,24 +209,19 @@ class ToolSeed:
                 )
                 return self._accepted(existing_capability, existing_version, duplicate=True)
 
-        try:
-            if target_capability is not None:
-                capability = target_capability
-                version = self.registry.add_version(
-                    capability["capability_id"],
-                    manifest,
-                    content,
-                    digest,
-                    status=status,
-                    origin=origin,
-                )
-            else:
-                capability, version = self.registry.create_with_version(
-                    manifest["name"], manifest, content, digest, status=status, origin=origin
-                )
-        except (sqlite3.Error, OSError):
-            return error_response(
-                SAVE_PERSISTENCE_FAILED, "candidate could not be durably persisted"
+        if target_capability is not None:
+            capability = target_capability
+            version = self.registry.add_version(
+                capability["capability_id"],
+                manifest,
+                content,
+                digest,
+                status=status,
+                origin=origin,
+            )
+        else:
+            capability, version = self.registry.create_with_version(
+                manifest["name"], manifest, content, digest, status=status, origin=origin
             )
 
         self.evidence.record(
@@ -342,19 +364,29 @@ class ToolSeed:
         capability = self.registry.get_capability(capability_id)
         if capability is None:
             return error_response(CAPABILITY_NOT_FOUND, "no capability matches that id")
-        self.registry.quarantine_capability(capability_id)
-        invalidated = sum(
-            self.evidence.invalidate_evidence_for_version(
-                version["version_id"], "capability_quarantined"
+        try:
+            with self.store.transaction():
+                self.registry.quarantine_capability(capability_id)
+                invalidated = sum(
+                    self.evidence.invalidate_evidence_for_version(
+                        version["version_id"], "capability_quarantined"
+                    )
+                    for version in self.registry.list_versions(capability_id)
+                )
+                observations_invalidated = (
+                    self.evidence.invalidate_observations_for_capability(
+                        capability_id, "capability_quarantined"
+                    )
+                )
+                self.evidence.record(
+                    EVENT_QUARANTINED,
+                    capability_id=capability_id,
+                    summary=str(reason)[:200],
+                )
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "quarantine could not be durably recorded"
             )
-            for version in self.registry.list_versions(capability_id)
-        )
-        observations_invalidated = self.evidence.invalidate_observations_for_capability(
-            capability_id, "capability_quarantined"
-        )
-        self.evidence.record(
-            EVENT_QUARANTINED, capability_id=capability_id, summary=str(reason)[:200]
-        )
         return {
             "ok": True,
             "capability_id": capability_id,
@@ -366,21 +398,33 @@ class ToolSeed:
     def quarantine_version(self, version_id: Any, reason: str = "manual quarantine") -> dict[str, Any]:
         if not isinstance(version_id, str):
             return error_response(INVALID_ARGUMENT, "version_id must be a string")
-        version = self.registry.quarantine_version(version_id)
-        if version is None:
-            return error_response(CAPABILITY_NOT_FOUND, "that version does not exist")
-        self.evidence.record(
-            EVENT_QUARANTINED,
-            capability_id=version["capability_id"],
-            version_id=version_id,
-            summary=str(reason)[:200],
-        )
-        invalidated = self.evidence.invalidate_evidence_for_version(
-            version_id, "version_quarantined"
-        )
-        observations_invalidated = self.evidence.invalidate_observations_for_version(
-            version_id, "version_quarantined"
-        )
+        try:
+            with self.store.transaction():
+                version = self.registry.quarantine_version(version_id)
+                if version is None:
+                    raise _CandidateRejected(
+                        error_response(CAPABILITY_NOT_FOUND, "that version does not exist")
+                    )
+                self.evidence.record(
+                    EVENT_QUARANTINED,
+                    capability_id=version["capability_id"],
+                    version_id=version_id,
+                    summary=str(reason)[:200],
+                )
+                invalidated = self.evidence.invalidate_evidence_for_version(
+                    version_id, "version_quarantined"
+                )
+                observations_invalidated = (
+                    self.evidence.invalidate_observations_for_version(
+                        version_id, "version_quarantined"
+                    )
+                )
+        except _CandidateRejected as exc:
+            return exc.response
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "quarantine could not be durably recorded"
+            )
         return {
             "ok": True,
             "version_id": version_id,
@@ -418,15 +462,21 @@ class ToolSeed:
                 "released": False,
                 "note": "capability was not quarantined",
             }
-        self.registry.release_capability(capability_id)
         summary = f"release: {reason.strip()[:200]}"
         if evidence_ref and evidence_ref.strip():
             summary += f" | evidence: {evidence_ref.strip()[:200]}"
-        self.evidence.record(
-            EVENT_RELEASED,
-            capability_id=capability_id,
-            summary=summary[:400],
-        )
+        try:
+            with self.store.transaction():
+                self.registry.release_capability(capability_id)
+                self.evidence.record(
+                    EVENT_RELEASED,
+                    capability_id=capability_id,
+                    summary=summary[:400],
+                )
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "release could not be durably recorded"
+            )
         return {"ok": True, "capability_id": capability_id, "released": True}
 
     def release_version(
@@ -456,16 +506,22 @@ class ToolSeed:
                 "status": version["status"],
                 "note": "version was not quarantined",
             }
-        self.registry.release_version(version_id)
         summary = f"version release: {reason.strip()[:200]}"
         if evidence_ref and evidence_ref.strip():
             summary += f" | evidence: {evidence_ref.strip()[:200]}"
-        self.evidence.record(
-            EVENT_VERSION_RELEASED,
-            capability_id=version["capability_id"],
-            version_id=version_id,
-            summary=summary[:400],
-        )
+        try:
+            with self.store.transaction():
+                self.registry.release_version(version_id)
+                self.evidence.record(
+                    EVENT_VERSION_RELEASED,
+                    capability_id=version["capability_id"],
+                    version_id=version_id,
+                    summary=summary[:400],
+                )
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "version release could not be durably recorded"
+            )
         return {
             "ok": True,
             "version_id": version_id,
@@ -516,16 +572,22 @@ class ToolSeed:
                 "candidate still triggers the content review gate; edit it and save a new version",
             )
 
-        self.registry.promote_version(version_id)
         summary = f"version promotion: {reason.strip()[:200]}"
         if evidence_ref and evidence_ref.strip():
             summary += f" | evidence: {evidence_ref.strip()[:200]}"
-        self.evidence.record(
-            EVENT_VERSION_PROMOTED,
-            capability_id=version["capability_id"],
-            version_id=version_id,
-            summary=summary[:400],
-        )
+        try:
+            with self.store.transaction():
+                self.registry.promote_version(version_id)
+                self.evidence.record(
+                    EVENT_VERSION_PROMOTED,
+                    capability_id=version["capability_id"],
+                    version_id=version_id,
+                    summary=summary[:400],
+                )
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "version promotion could not be durably recorded"
+            )
         return {
             "ok": True,
             "version_id": version_id,
@@ -579,16 +641,22 @@ class ToolSeed:
                 INVALID_ARGUMENT, "rollback target must be an older version"
             )
 
-        self.registry.set_current_version(capability_id, version_id)
         summary = f"rollback: {reason.strip()[:200]}"
         if evidence_ref and evidence_ref.strip():
             summary += f" | evidence: {evidence_ref.strip()[:200]}"
-        self.evidence.record(
-            EVENT_VERSION_ROLLED_BACK,
-            capability_id=capability_id,
-            version_id=version_id,
-            summary=summary[:400],
-        )
+        try:
+            with self.store.transaction():
+                self.registry.set_current_version(capability_id, version_id)
+                self.evidence.record(
+                    EVENT_VERSION_ROLLED_BACK,
+                    capability_id=capability_id,
+                    version_id=version_id,
+                    summary=summary[:400],
+                )
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "rollback could not be durably recorded"
+            )
         return {
             "ok": True,
             "capability_id": capability_id,
@@ -927,6 +995,21 @@ class ToolSeed:
         version = self.registry.get_version(version_id)
         if version is None or version["capability_id"] != capability_id:
             return error_response(INVALID_ARGUMENT, "version_id does not belong to that capability")
+        if invocation_id is not None:
+            invocation = self.store.db.execute(
+                "SELECT capability_id, version_id FROM invocations WHERE invocation_id = ?",
+                (invocation_id,),
+            ).fetchone()
+            if invocation is None:
+                return error_response(INVALID_ARGUMENT, "invocation_id does not exist")
+            if (
+                invocation["capability_id"] != capability_id
+                or invocation["version_id"] != version_id
+            ):
+                return error_response(
+                    INVALID_ARGUMENT,
+                    "invocation does not belong to that capability/version",
+                )
 
         if evidence_ids is None:
             ids: list[str] = []
@@ -1010,16 +1093,24 @@ class ToolSeed:
             )
         payload["target_capability_id"] = diagnosis["capability_id"]
 
-        response = self._save_candidate(
-            payload,
-            intent if isinstance(intent, str) else "repair candidate",
-            context,
-            force_candidate=True,
-        )
-        if response.get("status") != "accepted":
-            return response
+        try:
+            with self.store.transaction():
+                response = self._save_candidate(
+                    payload,
+                    intent if isinstance(intent, str) else "repair candidate",
+                    context,
+                    force_candidate=True,
+                )
+                if response.get("status") != "accepted":
+                    raise _CandidateRejected(response)
+                self.evidence.mark_repair_proposed(diagnosis_id, response["version_id"])
+        except _CandidateRejected as exc:
+            return exc.response
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "repair candidate could not be durably persisted"
+            )
 
-        self.evidence.mark_repair_proposed(diagnosis_id, response["version_id"])
         return {
             "ok": True,
             "diagnosis": self.evidence.get_diagnosis(diagnosis_id),
@@ -1032,11 +1123,23 @@ class ToolSeed:
         capability = self.registry.get_capability(capability_id)
         if capability is None:
             return error_response(CAPABILITY_NOT_FOUND, "no capability matches that id")
-        self.registry.archive(capability_id)
-        observations_invalidated = self.evidence.invalidate_observations_for_capability(
-            capability_id, "capability_archived"
-        )
-        self.evidence.record(EVENT_ARCHIVED, capability_id=capability_id, summary=str(reason)[:200])
+        try:
+            with self.store.transaction():
+                self.registry.archive(capability_id)
+                observations_invalidated = (
+                    self.evidence.invalidate_observations_for_capability(
+                        capability_id, "capability_archived"
+                    )
+                )
+                self.evidence.record(
+                    EVENT_ARCHIVED,
+                    capability_id=capability_id,
+                    summary=str(reason)[:200],
+                )
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "archive could not be durably recorded"
+            )
         return {
             "ok": True,
             "capability_id": capability_id,
@@ -1069,6 +1172,31 @@ class ToolSeed:
         ):
             if not isinstance(value, str) or not value:
                 return error_response(INVALID_ARGUMENT, f"{name} must be a non-empty string")
+        if task_id is not None and not isinstance(task_id, str):
+            return error_response(INVALID_ARGUMENT, "task_id must be a string")
+        if summary is not None and not isinstance(summary, str):
+            return error_response(INVALID_ARGUMENT, "summary must be a string")
+
+        capability = self.registry.get_capability(capability_id)
+        if capability is None:
+            return error_response(CAPABILITY_NOT_FOUND, "no capability matches that id")
+        version = self.registry.get_version(version_id)
+        if version is None or version["capability_id"] != capability_id:
+            return error_response(INVALID_ARGUMENT, "version_id does not belong to that capability")
+        invocation = self.store.db.execute(
+            "SELECT capability_id, version_id FROM invocations WHERE invocation_id = ?",
+            (invocation_id,),
+        ).fetchone()
+        if invocation is None:
+            return error_response(INVALID_ARGUMENT, "invocation_id does not exist")
+        if (
+            invocation["capability_id"] != capability_id
+            or invocation["version_id"] != version_id
+        ):
+            return error_response(
+                INVALID_ARGUMENT, "invocation does not belong to that capability/version"
+            )
+
         self.evidence.record(
             EVENT_TASK_OUTCOME,
             source_type=source_type,

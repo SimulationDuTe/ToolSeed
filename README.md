@@ -262,7 +262,7 @@ python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "v
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **133 项**测试，覆盖：
+当前 **138 项**测试，覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -276,7 +276,18 @@ python -m unittest discover -s tests -t . -v
 - CLI 的 save/run/record-outcome/stats/archive/release/release-version/promote-version/quarantine；
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
-- P1 证据与观察自动失效、维护报告、去重维护决策、能力观察、版本报告与回滚、失败诊断、修复候选与统计。
+- P1 证据与观察自动失效、维护报告、去重维护决策、能力观察、版本报告与回滚、失败诊断、修复候选与统计；
+- schema 版本迁移、嵌套事务回滚、回滚/修复候选原子性、invocation 归属校验。
+
+## 质量门禁
+
+```bash
+python scripts/quality_gate.py
+```
+
+- 始终运行 `compileall` + unittest；
+- 安装了 `ruff` / `mypy` 时自动运行，否则明确显示 `SKIP`，不会伪装成通过；
+- 可选开发依赖：`pip install -e .[dev]`。
 
 ## 价值对照实验
 
