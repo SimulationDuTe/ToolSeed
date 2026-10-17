@@ -89,7 +89,12 @@ class PersistenceTest(CoreTest):
             <= tables
         )
         self.assertTrue(
-            {"evidence_validity_assessments", "failure_diagnoses"} <= tables
+            {
+                "evidence_validity_assessments",
+                "failure_diagnoses",
+                "evolution_decisions",
+            }
+            <= tables
         )
 
     def test_save_context_is_sanitized_into_origin(self) -> None:

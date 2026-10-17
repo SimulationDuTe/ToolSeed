@@ -142,6 +142,69 @@ class EvidenceValidityTest(CoreTest):
         self.assertEqual(suggestions[0]["suggested_category"], "task_failure_attributed")
 
 
+class EvolutionDecisionTest(CoreTest):
+    case = "p1-decisions"
+
+    def _seed_repeated_failure(self) -> tuple[dict, dict]:
+        saved = self.save()
+        delivered = self.core.toolbox_run(saved["capability_id"])
+        for _ in range(2):
+            self.core.record_task_outcome(
+                capability_id=delivered["capability_id"],
+                version_id=delivered["version_id"],
+                invocation_id=delivered["invocation_id"],
+                outcome="failure",
+                source_type="test_runner",
+                task_id="repeat",
+            )
+        return saved, delivered
+
+    def test_run_maintenance_creates_deduped_decisions_and_dismisses(self) -> None:
+        self._seed_repeated_failure()
+
+        first = self.core.run_maintenance()
+        self.assertTrue(first["ok"], first)
+        self.assertGreaterEqual(len(first["created"]), 1)
+        actions = {decision["action"] for decision in first["created"]}
+        self.assertIn("diagnose_failure", actions)
+        self.assertEqual(first["skipped"], 0)
+
+        second = self.core.run_maintenance()
+        self.assertEqual(second["created"], [])
+        self.assertGreaterEqual(second["skipped"], 1)
+
+        listed = self.core.list_evolution_decisions(status="proposed")
+        self.assertEqual(len(listed["decisions"]), len(first["created"]))
+        diagnose = next(
+            decision
+            for decision in listed["decisions"]
+            if decision["action"] == "diagnose_failure"
+        )
+        self.assertEqual(diagnose["status"], "proposed")
+        self.assertEqual(diagnose["payload"]["failures"], 2)
+
+        dismissed = self.core.dismiss_evolution_decision(
+            diagnose["decision_id"], "handled manually"
+        )
+        self.assertTrue(dismissed["dismissed"])
+        self.assertEqual(dismissed["decision"]["status"], "dismissed")
+        self.assertEqual(dismissed["decision"]["resolution"], "handled manually")
+        self.assertFalse(
+            self.core.dismiss_evolution_decision(diagnose["decision_id"])["dismissed"]
+        )
+
+        stats = self.core.toolbox_stats()
+        self.assertGreaterEqual(stats["evolution_decisions"]["dismissed"], 1)
+
+    def test_invalid_decision_operations_are_rejected(self) -> None:
+        bad_status = self.core.list_evolution_decisions(status="done")
+        self.assertEqual(bad_status["error"]["code"], "INVALID_ARGUMENT")
+        missing = self.core.dismiss_evolution_decision("dec_missing")
+        self.assertEqual(missing["error"]["code"], "INVALID_ARGUMENT")
+        bad_resolution = self.core.dismiss_evolution_decision("dec_missing", 1)
+        self.assertEqual(bad_resolution["error"]["code"], "INVALID_ARGUMENT")
+
+
 class FailureDiagnosisTest(CoreTest):
     case = "p1-diagnosis"
 
