@@ -246,6 +246,63 @@ class ObservationTest(CoreTest):
             saved["version_id"],
         )
 
+    def test_quarantine_version_invalidates_observation(self) -> None:
+        saved = self.save()
+        recorded = self.core.record_observation(
+            capability_id=saved["capability_id"],
+            version_id=saved["version_id"],
+            observation_type="applicability",
+            summary="temporary observation",
+        )
+        result = self.core.quarantine_version(saved["version_id"], "risk")
+        self.assertGreaterEqual(result["observations_invalidated"], 1)
+
+        observation = self.core.evidence.get_observation(
+            recorded["observation"]["observation_id"]
+        )
+        self.assertEqual(observation["status"], "stale")
+        self.assertEqual(observation["status_reason"], "version_quarantined")
+
+    def test_archive_invalidates_capability_observations(self) -> None:
+        saved = self.save()
+        recorded = self.core.record_observation(
+            capability_id=saved["capability_id"],
+            version_id=saved["version_id"],
+            observation_type="dependency",
+            summary="temporary observation",
+        )
+        result = self.core.archive(saved["capability_id"], "retired")
+        self.assertGreaterEqual(result["observations_invalidated"], 1)
+
+        observation = self.core.evidence.get_observation(
+            recorded["observation"]["observation_id"]
+        )
+        self.assertEqual(observation["status"], "stale")
+        self.assertEqual(observation["status_reason"], "capability_archived")
+
+    def test_explicit_expire_observations(self) -> None:
+        saved = self.save()
+        recorded = self.core.record_observation(
+            capability_id=saved["capability_id"],
+            version_id=saved["version_id"],
+            observation_type="environment",
+            summary="temporary observation",
+        )
+        result = self.core.expire_version_observations(
+            saved["version_id"], "runtime_changed"
+        )
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["invalidated"], 1)
+
+        observation = self.core.evidence.get_observation(
+            recorded["observation"]["observation_id"]
+        )
+        self.assertEqual(observation["status"], "stale")
+        self.assertEqual(observation["status_reason"], "runtime_changed")
+
+        missing = self.core.expire_version_observations("ver_missing")
+        self.assertEqual(missing["error"]["code"], "INVALID_ARGUMENT")
+
     def test_invalid_observations_are_rejected(self) -> None:
         saved = self.save()
         missing_cap = self.core.record_observation(
