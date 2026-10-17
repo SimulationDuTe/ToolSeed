@@ -338,10 +338,21 @@ class ToolSeed:
         if capability is None:
             return error_response(CAPABILITY_NOT_FOUND, "no capability matches that id")
         self.registry.quarantine_capability(capability_id)
+        invalidated = sum(
+            self.evidence.invalidate_evidence_for_version(
+                version["version_id"], "capability_quarantined"
+            )
+            for version in self.registry.list_versions(capability_id)
+        )
         self.evidence.record(
             EVENT_QUARANTINED, capability_id=capability_id, summary=str(reason)[:200]
         )
-        return {"ok": True, "capability_id": capability_id, "quarantined": True}
+        return {
+            "ok": True,
+            "capability_id": capability_id,
+            "quarantined": True,
+            "evidence_invalidated": invalidated,
+        }
 
     def quarantine_version(self, version_id: Any, reason: str = "manual quarantine") -> dict[str, Any]:
         if not isinstance(version_id, str):
@@ -355,7 +366,15 @@ class ToolSeed:
             version_id=version_id,
             summary=str(reason)[:200],
         )
-        return {"ok": True, "version_id": version_id, "status": STATUS_QUARANTINED}
+        invalidated = self.evidence.invalidate_evidence_for_version(
+            version_id, "version_quarantined"
+        )
+        return {
+            "ok": True,
+            "version_id": version_id,
+            "status": STATUS_QUARANTINED,
+            "evidence_invalidated": invalidated,
+        }
 
     def release_capability(
         self,
@@ -554,6 +573,30 @@ class ToolSeed:
             "assessed": latest is not None,
             "assessments": self.evidence.assessments(evidence_id),
         }
+
+    def expire_version_evidence(
+        self,
+        version_id: Any,
+        reason_code: Any = "policy_or_environment_changed",
+    ) -> dict[str, Any]:
+        if not isinstance(version_id, str):
+            return error_response(INVALID_ARGUMENT, "version_id must be a string")
+        if not isinstance(reason_code, str) or not reason_code.strip():
+            return error_response(INVALID_ARGUMENT, "reason_code must be a non-empty string")
+        if self.registry.get_version(version_id) is None:
+            return error_response(INVALID_ARGUMENT, "version_id does not exist")
+        changed = self.evidence.invalidate_evidence_for_version(
+            version_id, reason_code.strip()
+        )
+        return {
+            "ok": True,
+            "version_id": version_id,
+            "invalidated": changed,
+            "reason_code": reason_code.strip(),
+        }
+
+    def maintenance_report(self) -> dict[str, Any]:
+        return {"ok": True, "report": self.evidence.maintenance_report()}
 
     def diagnose_failure(
         self,

@@ -6,6 +6,7 @@ always stored alongside it.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
@@ -200,12 +201,16 @@ class Evidence:
         }
 
     def latest_validity(self, evidence_id: str) -> str | None:
+        latest = self.latest_assessment(evidence_id)
+        return latest["validity"] if latest is not None else None
+
+    def latest_assessment(self, evidence_id: str) -> dict[str, Any] | None:
         row = self.store.db.execute(
-            "SELECT validity FROM evidence_validity_assessments "
+            "SELECT * FROM evidence_validity_assessments "
             "WHERE evidence_id = ? ORDER BY assessed_at DESC, rowid DESC LIMIT 1",
             (evidence_id,),
         ).fetchone()
-        return row["validity"] if row is not None else None
+        return self._assessment_dict(row) if row is not None else None
 
     def assessments(self, evidence_id: str) -> list[dict[str, Any]]:
         rows = self.store.db.execute(
@@ -237,6 +242,120 @@ class Evidence:
         assessed = sum(counts.values())
         counts["unassessed"] = max(0, self.total_events() - assessed)
         return counts
+
+    def version_fingerprint(self, version_id: str) -> dict[str, Any] | None:
+        row = self.store.db.execute(
+            "SELECT version_id, version_number, content_hash, manifest_json "
+            "FROM capability_versions WHERE version_id = ?",
+            (version_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "version_id": row["version_id"],
+            "version_number": int(row["version_number"]),
+            "content_hash": row["content_hash"],
+            "manifest_hash": hashlib.sha256(
+                row["manifest_json"].encode("utf-8")
+            ).hexdigest(),
+        }
+
+    def invalidate_evidence_for_version(
+        self,
+        version_id: str,
+        reason_code: str = "version_quarantined",
+    ) -> int:
+        """Append stale assessments for evidence tied to a version.
+
+        Raw evidence is never rewritten; this only appends the current
+        validity projection.
+        """
+        fingerprint = self.version_fingerprint(version_id)
+        if fingerprint is None:
+            return 0
+        rows = self.store.db.execute(
+            "SELECT event_id FROM evidence_events WHERE version_id = ? ORDER BY rowid",
+            (version_id,),
+        ).fetchall()
+        changed = 0
+        for row in rows:
+            latest = self.latest_assessment(row["event_id"])
+            if latest is not None and latest["validity"] in ("stale", "superseded"):
+                continue
+            self.assess(
+                row["event_id"],
+                "stale",
+                reason_code,
+                fingerprint=fingerprint,
+                invalidated_by=version_id,
+            )
+            changed += 1
+        return changed
+
+    def maintenance_report(self, failure_threshold: int = 2) -> dict[str, Any]:
+        validity = self.validity_counts()
+        repeated = [
+            {
+                "capability_id": row["capability_id"],
+                "version_id": row["version_id"],
+                "failures": int(row["n"]),
+                "suggested_category": "task_failure_attributed",
+            }
+            for row in self.store.db.execute(
+                "SELECT capability_id, version_id, COUNT(*) AS n "
+                "FROM evidence_events "
+                "WHERE event_type = ? AND outcome = 'failure' AND version_id IS NOT NULL "
+                "GROUP BY capability_id, version_id HAVING COUNT(*) >= ? "
+                "ORDER BY n DESC",
+                (EVENT_TASK_OUTCOME, failure_threshold),
+            ).fetchall()
+        ]
+
+        suggestions: list[dict[str, Any]] = []
+        if validity["unassessed"] > 0:
+            suggestions.append(
+                {
+                    "action": "assess_evidence",
+                    "reason": "unassessed_evidence",
+                    "count": validity["unassessed"],
+                }
+            )
+        if validity["stale"] > 0:
+            suggestions.append(
+                {
+                    "action": "revalidate_evidence",
+                    "reason": "stale_evidence",
+                    "count": validity["stale"],
+                }
+            )
+        for item in repeated:
+            suggestions.append(
+                {
+                    "action": "diagnose_failure",
+                    "reason": "repeated_failures",
+                    "capability_id": item["capability_id"],
+                    "version_id": item["version_id"],
+                    "failures": item["failures"],
+                    "suggested_category": item["suggested_category"],
+                }
+            )
+
+        counts = self.diagnosis_counts()
+        if counts["open"] > 0:
+            suggestions.append(
+                {
+                    "action": "review_diagnosis",
+                    "reason": "open_diagnoses",
+                    "count": counts["open"],
+                }
+            )
+
+        return {
+            "validity": validity,
+            "repeated_failures": repeated,
+            "open_diagnoses": counts["open"],
+            "suggestions": suggestions,
+        }
 
     # -- failure diagnosis and repair candidates (P1) --------------------
     def create_diagnosis(

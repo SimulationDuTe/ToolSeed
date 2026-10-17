@@ -32,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
             "release",
             "release-version",
             "promote-version",
+            "maintenance",
             "archive",
             "record-outcome",
         ],
@@ -90,6 +91,8 @@ def main(argv: list[str] | None = None) -> int:
                 payload.get("reason"),
                 payload.get("evidence_ref"),
             )
+        elif namespace.operation == "maintenance":
+            result = app.maintenance_report()
         elif namespace.operation == "archive":
             result = app.archive(
                 payload.get("capability_id"), payload.get("reason", "manual archive")
