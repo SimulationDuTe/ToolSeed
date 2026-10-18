@@ -13,11 +13,12 @@ from typing import Any
 
 _MCPServer: Any
 try:
-    from mcp.server import MCPServer as _MCPServer
+    from mcp.server import MCPServer as _ImportedMCPServer
 except ModuleNotFoundError as exc:  # pragma: no cover - exercised without SDK
     _MCPServer = None
     _MCP_IMPORT_ERROR: ModuleNotFoundError | None = exc
 else:
+    _MCPServer = _ImportedMCPServer
     _MCP_IMPORT_ERROR = None
 
 from .core.api import ToolSeed

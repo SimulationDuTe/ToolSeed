@@ -232,6 +232,8 @@ Schema 使用 `PRAGMA user_version` 迁移，当前为 v3：
 - v2 增加 `capabilities.namespace`；
 - v3 在版本上记录 `namespace` / `name`，并建立 `(namespace, name, content_hash)` 唯一索引，
   防止并发保存产生重复能力；
+- 迁移在单个事务内逐条执行；v3 建索引前先做重复身份预检，发现冲突时停在 v2，
+  不留下半迁移 Schema；
 - 启动时通过跨进程迁移锁串行化，SQLite 启用 WAL 与 `busy_timeout`，支持多个 MCP 进程共享目录。
 
 ## 管理操作与 CLI
@@ -344,7 +346,7 @@ SDK，因此还没有做端到端验证，实际配置请使用绝对路径并�
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **154 项**测试；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
+当前 **156 项**测试；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -359,6 +361,7 @@ python -m unittest discover -s tests -t . -v
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
 - schema v2/v3 迁移、共享数据目录、namespace 隔离、迁移锁与 `busy_timeout`；
+- v3 重复身份预检、迁移失败整体回滚且 `user_version` 保持一致；
 - 两个连接并发保存同一候选时只生成一个能力/版本（唯一身份索引兜底）；
 - P1 证据与观察自动失效、维护报告、去重维护决策与应用、重新验证决策闭环、能力观察、版本报告与回滚、失败诊断、修复候选、重复候选提示与统计；
 - schema 版本迁移、嵌套事务回滚、回滚/修复候选原子性、invocation 归属校验；

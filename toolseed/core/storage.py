@@ -160,6 +160,46 @@ MIGRATIONS: dict[int, str] = {
 }
 
 
+class MigrationConflict(RuntimeError):
+    """Raised before v3 when historical versions share one identity."""
+
+    def __init__(self, groups: list[dict[str, object]]) -> None:
+        self.groups = groups
+        sample = groups[:3]
+        super().__init__(
+            "schema migration stopped before v3: "
+            f"{len(groups)} duplicate identity group(s); sample={sample}"
+        )
+
+
+def _statements(script: str) -> Iterator[str]:
+    """Split a migration script at top-level semicolons."""
+    buffer: list[str] = []
+    quote: str | None = None
+    index = 0
+    while index < len(script):
+        char = script[index]
+        buffer.append(char)
+        if quote is not None:
+            if char == quote:
+                if index + 1 < len(script) and script[index + 1] == quote:
+                    buffer.append(script[index + 1])
+                    index += 1
+                else:
+                    quote = None
+        elif char in ("'", '"'):
+            quote = char
+        elif char == ";":
+            statement = "".join(buffer).strip()
+            if statement:
+                yield statement
+            buffer = []
+        index += 1
+    statement = "".join(buffer).strip()
+    if statement:
+        yield statement
+
+
 class Store:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).resolve()
@@ -172,7 +212,11 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA busy_timeout = 5000")
         self._tx_depth = 0
-        self._migrate()
+        try:
+            self._migrate()
+        except BaseException:
+            self.db.close()
+            raise
 
     @contextlib.contextmanager
     def _migration_lock(self) -> Iterator[None]:
@@ -204,12 +248,35 @@ class Store:
     def _migrate(self) -> None:
         with self._migration_lock():
             current = int(self.db.execute("PRAGMA user_version").fetchone()[0])
-            for version in sorted(MIGRATIONS):
-                if version <= current:
-                    continue
-                self.db.executescript(MIGRATIONS[version])
-                self.db.execute(f"PRAGMA user_version = {version}")
-            self.db.commit()
+            if current >= max(MIGRATIONS):
+                return
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                for version in sorted(MIGRATIONS):
+                    if version <= current:
+                        continue
+                    if version == 3:
+                        self._preflight_v3()
+                    for statement in _statements(MIGRATIONS[version]):
+                        self.db.execute(statement)
+                    self.db.execute(f"PRAGMA user_version = {version}")
+                self.db.commit()
+            except BaseException:
+                self.db.rollback()
+                raise
+
+    def _preflight_v3(self) -> None:
+        rows = self.db.execute(
+            "SELECT c.namespace AS namespace, c.name AS name, "
+            "       v.content_hash AS content_hash, COUNT(*) AS count "
+            "FROM capability_versions v "
+            "JOIN capabilities c ON c.capability_id = v.capability_id "
+            "GROUP BY c.namespace, c.name, v.content_hash "
+            "HAVING COUNT(*) > 1 "
+            "ORDER BY c.namespace, c.name, v.content_hash"
+        ).fetchall()
+        if rows:
+            raise MigrationConflict([dict(row) for row in rows])
 
     @property
     def schema_version(self) -> int:
