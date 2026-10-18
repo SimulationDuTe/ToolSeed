@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import sqlite3
-import unittest
 from unittest import mock
 
 from tests.helpers import CoreTest, candidate
@@ -58,18 +57,20 @@ class StorageQualityTest(CoreTest):
             migrated.close()
 
     def test_nested_transaction_rolls_back_all_writes(self) -> None:
-        with self.assertRaises(RuntimeError):
-            with self.core.store.transaction():
-                self.core.store.db.execute(
-                    "INSERT INTO capabilities (capability_id, name, created_at) "
-                    "VALUES ('cap_nested', 'nested', 'now')"
-                )
-                with self.core.store.transaction():
-                    self.core.store.db.execute(
-                        "INSERT INTO capabilities (capability_id, name, created_at) "
-                        "VALUES ('cap_inner', 'inner', 'now')"
-                    )
-                raise RuntimeError("force rollback")
+        with (
+            self.assertRaises(RuntimeError),
+            self.core.store.transaction(),
+            self.core.store.transaction(),
+        ):
+            self.core.store.db.execute(
+                "INSERT INTO capabilities (capability_id, name, created_at) "
+                "VALUES ('cap_nested', 'nested', 'now')"
+            )
+            self.core.store.db.execute(
+                "INSERT INTO capabilities (capability_id, name, created_at) "
+                "VALUES ('cap_inner', 'inner', 'now')"
+            )
+            raise RuntimeError("force rollback")
         count = self.core.store.db.execute(
             "SELECT COUNT(*) AS n FROM capabilities"
         ).fetchone()["n"]
@@ -106,7 +107,7 @@ class AtomicOperationQualityTest(CoreTest):
 
     def test_repair_version_and_diagnosis_update_are_atomic(self) -> None:
         saved = self.save()
-        delivered = self.core.toolbox_run(saved["capability_id"])
+        self.core.toolbox_run(saved["capability_id"])
         diagnosis = self.core.diagnose_failure(
             capability_id=saved["capability_id"],
             version_id=saved["version_id"],

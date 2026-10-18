@@ -285,6 +285,7 @@ class CommandAgent:
                     stderr=stderr_handle,
                     text=True,
                     timeout=self.timeout_s,
+                    check=False,
                 )
             stdout = stdout_file.read_text(encoding="utf-8", errors="replace")
             stderr = stderr_file.read_text(encoding="utf-8", errors="replace")
@@ -372,7 +373,7 @@ def _mcnemar_p(b: int, c: int) -> float:
     total = b + c
     if total == 0:
         return 1.0
-    tail = sum(math.comb(total, k) for k in range(0, min(b, c) + 1)) / (2**total)
+    tail = sum(math.comb(total, k) for k in range(min(b, c) + 1)) / (2**total)
     return round(min(1.0, 2 * tail), 6)
 
 

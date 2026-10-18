@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 from .errors import INVALID_ARGUMENT, error_response
-from .registry import Registry, STATUS_READY
+from .registry import STATUS_READY, Registry
 from .storage import Store
 
 _TOKEN = re.compile(r"[a-z0-9_]+")

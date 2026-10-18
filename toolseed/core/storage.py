@@ -5,8 +5,8 @@ import contextlib
 import os
 import sqlite3
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 
 def default_data_dir() -> Path:

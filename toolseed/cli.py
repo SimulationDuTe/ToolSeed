@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Any
+from typing import Any, cast
 
 from .core.api import ToolSeed
 
@@ -86,19 +86,19 @@ def main(argv: list[str] | None = None) -> int:
         elif namespace.operation == "release":
             result = app.release_capability(
                 payload.get("capability_id"),
-                payload.get("reason"),
+                cast(str, payload.get("reason")),
                 payload.get("evidence_ref"),
             )
         elif namespace.operation == "release-version":
             result = app.release_version(
                 payload.get("version_id"),
-                payload.get("reason"),
+                cast(str, payload.get("reason")),
                 payload.get("evidence_ref"),
             )
         elif namespace.operation == "promote-version":
             result = app.promote_version(
                 payload.get("version_id"),
-                payload.get("reason"),
+                cast(str, payload.get("reason")),
                 payload.get("evidence_ref"),
             )
         elif namespace.operation == "rollback":

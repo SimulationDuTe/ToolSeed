@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def run(name: str, command: list[str]) -> bool:
     print(f"\n== {name} ==")
-    result = subprocess.run(command, cwd=ROOT)
+    result = subprocess.run(command, cwd=ROOT, check=False)
     if result.returncode != 0:
         print(f"FAIL: {name} (exit {result.returncode})")
         return False

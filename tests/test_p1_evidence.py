@@ -14,7 +14,7 @@ class EvidenceValidityTest(CoreTest):
         return delivered
 
     def test_assess_evidence_and_read_latest_projection(self) -> None:
-        delivery = self._delivered()
+        self._delivered()
         event_id = self.core.store.db.execute(
             "SELECT event_id FROM evidence_events WHERE event_type = 'procedure_delivered' "
             "ORDER BY rowid DESC LIMIT 1"
@@ -404,7 +404,7 @@ class EvolutionDecisionTest(CoreTest):
 
     def test_apply_revalidate_evidence_requires_fresh_valid_assessment(self) -> None:
         saved = self.save()
-        delivered = self.core.toolbox_run(saved["capability_id"])
+        self.core.toolbox_run(saved["capability_id"])
         event_id = self.core.store.db.execute(
             "SELECT event_id FROM evidence_events WHERE event_type = 'procedure_delivered' "
             "ORDER BY rowid DESC LIMIT 1"

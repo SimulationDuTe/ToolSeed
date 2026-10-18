@@ -11,10 +11,11 @@ import sys
 import threading
 from typing import Any
 
+_MCPServer: Any
 try:
-    from mcp.server import MCPServer
+    from mcp.server import MCPServer as _MCPServer
 except ModuleNotFoundError as exc:  # pragma: no cover - exercised without SDK
-    MCPServer = None  # type: ignore[assignment]
+    _MCPServer = None
     _MCP_IMPORT_ERROR: ModuleNotFoundError | None = exc
 else:
     _MCP_IMPORT_ERROR = None
@@ -34,11 +35,11 @@ def get_core() -> ToolSeed:
 
 
 def create_server(core: ToolSeed | None = None) -> Any:
-    if MCPServer is None:
+    if _MCPServer is None:
         raise RuntimeError(
             'official MCP SDK is not installed; run: pip install "mcp[cli]"'
         ) from _MCP_IMPORT_ERROR
-    server = MCPServer("ToolSeed")
+    server = _MCPServer("ToolSeed")
     lock = threading.Lock()
 
     def call(method: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:

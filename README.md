@@ -373,9 +373,10 @@ python scripts/quality_gate.py
 ```
 
 - 始终运行 `compileall` + unittest；
-- 安装了 `ruff` / `mypy` 时自动运行，否则明确显示 `SKIP`，不会伪装成通过；
-- `.github/workflows/quality.yml` 在 Linux/Windows/macOS 和 Python 3.11/3.13 上安装官方 MCP SDK 后跑全套测试；
-- 可选开发依赖：`pip install -e .[dev]`。
+- 本机 `.venv` 已安装 `ruff` / `mypy`，当前四项全部 PASS；未安装时明确显示 `SKIP`，不会伪装成通过；
+- `.github/workflows/quality.yml` 在 Linux/Windows/macOS 和 Python 3.11/3.13 上安装 `.[dev]`
+  与官方 MCP SDK，然后运行完整质量门禁；
+- 开发依赖：`pip install -e .[dev]` 或 `uv pip install ruff mypy`。
 
 ## 价值对照实验
 

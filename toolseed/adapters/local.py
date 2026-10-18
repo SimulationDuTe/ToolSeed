@@ -6,6 +6,7 @@ reliable task outcome channel. Nothing here may be reported as task success.
 from __future__ import annotations
 
 import os
+import sqlite3
 from typing import Any
 
 from ..core.api import ToolSeed
@@ -121,7 +122,7 @@ class LocalAdapter:
         try:
             self.core.store.db.execute("SELECT 1").fetchone()
             reachable = True
-        except Exception:
+        except (sqlite3.Error, OSError):
             reachable = False
         return {
             "ok": reachable,
