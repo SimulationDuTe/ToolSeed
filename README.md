@@ -401,8 +401,22 @@ Cursor `.cursor/mcp.json`：
 }
 ```
 
-不同客户端的配置格式不同，但启动命令相同。以下为官方文档形式的接入示例；当前环境尚未安装
-SDK，因此还没有做端到端验证，实际配置请使用绝对路径并按客户端版本调整。
+Codex `~/.codex/config.toml`：
+
+```toml
+[mcp_servers.toolseed]
+command = "toolseed-mcp"
+args = []
+```
+
+已用官方 MCP Client 验证：
+
+- Claude/Cursor 风格的 `mcpServers` JSON 配置能真实启动 `toolseed-mcp` stdio 子进程；
+- Codex 风格的 `mcp_servers` TOML 配置同样能启动；
+- 两种配置都列出四个固定工具，并能调用 `toolbox_stats` 取得结构化结果。
+
+实际 Claude Code / Cursor / Codex 客户端 UI 的接入尚未逐个人工验证；配置命令应使用绝对路径
+`toolseed-mcp`，或等价的 `python -m toolseed.mcp_server`。
 
 ## 测试
 
@@ -437,6 +451,7 @@ python -m unittest discover -s tests -t . -v
 - schema 版本迁移、嵌套事务回滚、回滚/修复候选原子性、invocation 归属校验；
 - MCP Server 固定四工具与结构化统计调用（官方 SDK 2.3.0 已验证）；
 - MCP stdio 子进程启动与四工具枚举（CI 验证，本地沙箱可跳过）；
+- Claude/Cursor JSON 与 Codex TOML 宿主配置启动验证；
 - 缺少官方 SDK 时的可操作错误与非零退出。
 
 ## 质量门禁
@@ -493,7 +508,7 @@ python -m benchmarks.live_experiment --mode command \
 观察自动失效、版本报告与受控回滚、失败诊断与修复候选、`LocalAdapter` 与 Skill、价值对照实验骨架、
 live A/B 实验框架、MCP stdio 适配层（官方 SDK 2.3.0 已验证）。
 
-尚未实现：MCP 各客户端实际配置的端到端验证、`executable` / `workflow`（`kind` 不是 `procedure`
+尚未实现：MCP 各客户端 UI 的逐个人工接入验证、`executable` / `workflow`（`kind` 不是 `procedure`
 时返回 `UNSUPPORTED_CAPABILITY_KIND`）、代码执行与沙箱、多文件/ZIP 能力包、向量检索或 LLM 重排、
 异步保存队列、证据成熟度状态机、多用户 RBAC、检索缓存、自动反思/自动修复、真实 LLM 或
 独立验证器参与的价值实验。
