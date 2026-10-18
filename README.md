@@ -438,6 +438,9 @@ python scripts/verify_release.py --dist dist
 
 CI 的 `package` job 在 Ubuntu / Windows / macOS 上执行同一套检查。
 
+GitHub Release 由 `v*` tag 触发：构建 sdist/wheel，生成 `SHA256SUMS`，并作为 Release assets 上传。
+本仓库尚未发布到 PyPI；PyPI 发布流程需要单独验证。
+
 ## 测试
 
 ```bash
