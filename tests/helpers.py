@@ -60,3 +60,41 @@ class CoreTest(unittest.TestCase):
         result = self.core.toolbox_save(payload if payload is not None else candidate(), intent, context)
         self.assertEqual(result.get("status"), "accepted", result)
         return result
+
+
+def verification_payload(
+    version_number: int,
+    *,
+    outcome: str = "passed",
+    source_type: str = "test_runner",
+    method: str = "pytest",
+    case_ids: list[str] | None = None,
+    regression_case_ids: list[str] | None = None,
+    ref: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "method": method,
+        "input_ref": f"case-input:v{version_number}",
+        "artifact_ref": f"artifact:v{version_number}",
+        "case_ids": case_ids or [f"new-case-v{version_number}"],
+    }
+    if version_number > 1:
+        payload["regression_case_ids"] = regression_case_ids or [f"regression-v{version_number - 1}"]
+    return {
+        "outcome": outcome,
+        "source_type": source_type,
+        "verification_ref": ref or f"test-run:v{version_number}",
+        "verification": payload,
+    }
+
+
+def verify_version(core: ToolSeed, saved: dict[str, Any], **overrides: Any) -> dict[str, Any]:
+    payload = verification_payload(int(saved["version"]), **overrides)
+    result = core.record_version_verification(
+        version_id=saved["version_id"],
+        content_hash=saved["content_hash"],
+        **payload,
+    )
+    if not result.get("ok"):
+        raise AssertionError(result)
+    return result

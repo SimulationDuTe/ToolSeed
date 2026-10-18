@@ -239,6 +239,29 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertTrue(released["released"])
 
+        code, verified = call(
+            "record-verification",
+            json.dumps(
+                {
+                    "version_id": saved["version_id"],
+                    "content_hash": saved["content_hash"],
+                    "outcome": "passed",
+                    "source_type": "test_runner",
+                    "verification_ref": "cli-test:1",
+                    "verification": {
+                        "method": "cli-test",
+                        "input_ref": "case:cli",
+                        "artifact_ref": "artifact:cli",
+                        "case_ids": ["case:cli"],
+                    },
+                }
+            ),
+            "--data-dir",
+            str(BASE),
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(verified["ok"], verified)
+
         code, promoted = call(
             "promote-version",
             json.dumps({"version_id": saved["version_id"], "reason": "content rechecked"}),

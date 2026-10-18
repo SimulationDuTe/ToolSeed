@@ -51,6 +51,7 @@ def main(argv: list[str] | None = None) -> int:
             "expire-version-observations",
             "archive",
             "record-outcome",
+            "record-verification",
             "migrate-check",
             "migrate-repair",
             "migrate-flatten",
@@ -216,6 +217,15 @@ def main(argv: list[str] | None = None) -> int:
             result = app.expire_version_observations(
                 payload.get("version_id"),
                 payload.get("reason_code", "policy_or_environment_changed"),
+            )
+        elif namespace.operation == "record-verification":
+            result = app.record_version_verification(
+                version_id=payload.get("version_id"),
+                content_hash=payload.get("content_hash"),
+                outcome=payload.get("outcome"),
+                source_type=payload.get("source_type"),
+                verification_ref=payload.get("verification_ref"),
+                verification=payload.get("verification"),
             )
         elif namespace.operation == "archive":
             result = app.archive(

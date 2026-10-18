@@ -162,12 +162,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_versions_identity
   WHERE duplicate_of IS NULL;
 """
 
+MIGRATION_6 = """
+ALTER TABLE evidence_events ADD COLUMN content_hash TEXT;
+ALTER TABLE evidence_events ADD COLUMN signal_key TEXT;
+ALTER TABLE evidence_events ADD COLUMN verification_outcome TEXT;
+ALTER TABLE evidence_events ADD COLUMN verification_json TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_signal_key
+  ON evidence_events(signal_key)
+  WHERE signal_key IS NOT NULL;
+"""
+
 MIGRATIONS: dict[int, str] = {
     1: SCHEMA,
     2: MIGRATION_2,
     3: MIGRATION_3,
     4: MIGRATION_4,
     5: MIGRATION_5,
+    6: MIGRATION_6,
 }
 
 
@@ -294,8 +305,10 @@ class Store:
         return int(self.db.execute("PRAGMA user_version").fetchone()[0])
 
     @contextlib.contextmanager
-    def transaction(self) -> Iterator[sqlite3.Connection]:
+    def transaction(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:
         outer = self._tx_depth == 0
+        if outer and immediate:
+            self.db.execute("BEGIN IMMEDIATE")
         self._tx_depth += 1
         try:
             yield self.db

@@ -1,7 +1,7 @@
 """Version-level lifecycle and capability-level retirement (P0-SLIM §5, §11.1)."""
 from __future__ import annotations
 
-from tests.helpers import CONTENT, CoreTest, candidate
+from tests.helpers import CONTENT, CoreTest, candidate, verify_version
 
 REVIEW_CONTENT = CONTENT + "\n4. 清理前确认后执行 rm -rf /tmp/cache。"
 
@@ -18,6 +18,9 @@ class VersionRollbackTest(CoreTest):
             ),
             "version two",
         )
+        verify_version(self.core, second)
+        promoted = self.core.promote_version(second["version_id"], "verified")
+        self.assertTrue(promoted["promoted"], promoted)
         return first, second
 
     def test_rollback_to_older_ready_restores_delivery_and_records_event(self) -> None:
@@ -105,7 +108,7 @@ class LifecycleTest(CoreTest):
         self.assertEqual(delivered["version"], 1)
         self.assertEqual(delivered["result"]["content"], CONTENT)
 
-    def test_new_ready_version_moves_the_current_pointer(self) -> None:
+    def test_verified_revision_moves_the_current_pointer(self) -> None:
         first = self.save()
         updated = self.core.toolbox_save(
             candidate(
@@ -114,7 +117,9 @@ class LifecycleTest(CoreTest):
             ),
             "improved version",
         )
-        self.assertEqual(updated["version_status"], "ready")
+        self.assertEqual(updated["version_status"], "candidate")
+        verify_version(self.core, updated)
+        self.assertTrue(self.core.promote_version(updated["version_id"], "verified")["promoted"])
 
         delivered = self.core.toolbox_run(first["capability_id"])
         self.assertEqual(delivered["version"], 2)
@@ -142,6 +147,8 @@ class LifecycleTest(CoreTest):
             ),
             "version two",
         )
+        verify_version(self.core, second)
+        self.assertTrue(self.core.promote_version(second["version_id"], "verified")["promoted"])
         self.core.quarantine_version(second["version_id"], "bad version two")
 
         capability = self.core.registry.get_capability(first["capability_id"])
@@ -224,6 +231,7 @@ class LifecycleTest(CoreTest):
             "CAPABILITY_NOT_READY",
         )
 
+        verify_version(self.core, saved)
         promoted = self.core.promote_version(
             saved["version_id"], "content rechecked", "ticket-9"
         )
@@ -252,7 +260,7 @@ class LifecycleTest(CoreTest):
         promoted = self.core.promote_version(saved["version_id"], "promote")
         self.assertEqual(promoted["error"]["code"], "CAPABILITY_QUARANTINED")
 
-    def test_promote_older_version_keeps_newest_ready_current(self) -> None:
+    def test_promote_older_version_rejects_current_conflict(self) -> None:
         first = self.save()
         second = self.core.toolbox_save(
             candidate(
@@ -261,9 +269,13 @@ class LifecycleTest(CoreTest):
             ),
             "version two",
         )
+        verify_version(self.core, second)
+        self.assertTrue(self.core.promote_version(second["version_id"], "verified")["promoted"])
         self.core.quarantine_version(first["version_id"], "old version risk")
         self.core.release_version(first["version_id"], "reviewed")
-        self.core.promote_version(first["version_id"], "reviewed")
+        verify_version(self.core, first)
+        result = self.core.promote_version(first["version_id"], "reviewed")
+        self.assertEqual(result["error"]["reason_code"], "CURRENT_VERSION_CONFLICT")
 
         delivered = self.core.toolbox_run(first["capability_id"])
         self.assertEqual(delivered["version"], second["version"])

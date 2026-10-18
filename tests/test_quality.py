@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 from unittest import mock
 
-from tests.helpers import CoreTest, candidate
+from tests.helpers import CoreTest, candidate, verify_version
 from toolseed import ToolSeed
 
 
@@ -12,10 +12,10 @@ class StorageQualityTest(CoreTest):
     case = "quality-storage"
 
     def test_schema_version_is_recorded_and_reopen_is_idempotent(self) -> None:
-        self.assertEqual(self.core.store.schema_version, 5)
+        self.assertEqual(self.core.store.schema_version, 6)
         self.core.close()
         self.core = ToolSeed(str(self.dir))
-        self.assertEqual(self.core.store.schema_version, 5)
+        self.assertEqual(self.core.store.schema_version, 6)
 
     def test_busy_timeout_and_legacy_v1_migration(self) -> None:
         timeout = self.core.store.db.execute("PRAGMA busy_timeout").fetchone()[0]
@@ -33,13 +33,20 @@ class StorageQualityTest(CoreTest):
             "CREATE TABLE capability_versions ("
             "version_id TEXT PRIMARY KEY, capability_id TEXT NOT NULL, content_hash TEXT NOT NULL)"
         )
+        db.execute(
+            "CREATE TABLE evidence_events ("
+            "event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, created_at TEXT NOT NULL,"
+            "source_type TEXT NOT NULL, capability_id TEXT, version_id TEXT, invocation_id TEXT,"
+            "task_id TEXT, outcome TEXT NOT NULL DEFAULT 'unknown', quantity INTEGER NOT NULL DEFAULT 0,"
+            "summary TEXT)"
+        )
         db.execute("PRAGMA user_version = 1")
         db.commit()
         db.close()
 
         migrated = ToolSeed(str(legacy))
         try:
-            self.assertEqual(migrated.store.schema_version, 5)
+            self.assertEqual(migrated.store.schema_version, 6)
             columns = {
                 row["name"]
                 for row in migrated.store.db.execute("PRAGMA table_info(capabilities)")
@@ -89,6 +96,8 @@ class AtomicOperationQualityTest(CoreTest):
             ),
             "version two",
         )
+        verify_version(self.core, second)
+        self.assertTrue(self.core.promote_version(second["version_id"], "verified")["promoted"])
         return first, second
 
     def test_rollback_pointer_and_audit_event_are_atomic(self) -> None:

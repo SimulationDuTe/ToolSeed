@@ -349,40 +349,6 @@ class Registry:
                 )
         return version
 
-    def promote_version(self, version_id: str) -> sqlite3.Row | None:
-        """Mark a candidate ready and point the capability at its best ready version."""
-        with self.store.transaction() as db:
-            version = db.execute(
-                "SELECT * FROM capability_versions WHERE version_id = ?", (version_id,)
-            ).fetchone()
-            if version is None:
-                return None
-            db.execute(
-                "UPDATE capability_versions SET status = ? WHERE version_id = ?",
-                (STATUS_READY, version_id),
-            )
-            capability = db.execute(
-                "SELECT * FROM capabilities WHERE capability_id = ?",
-                (version["capability_id"],),
-            ).fetchone()
-            if (
-                capability is not None
-                and capability["archived_at"] is None
-                and capability["quarantined_at"] is None
-            ):
-                best = db.execute(
-                    "SELECT version_id FROM capability_versions "
-                    "WHERE capability_id = ? AND status = ? "
-                    "ORDER BY version_number DESC LIMIT 1",
-                    (version["capability_id"], STATUS_READY),
-                ).fetchone()
-                if best is not None:
-                    db.execute(
-                        "UPDATE capabilities SET current_version_id = ? WHERE capability_id = ?",
-                        (best["version_id"], version["capability_id"]),
-                    )
-        return version
-
     # -- queries ----------------------------------------------------------
     def deliverable_capabilities(
         self,

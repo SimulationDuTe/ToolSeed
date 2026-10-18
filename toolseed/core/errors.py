@@ -38,14 +38,25 @@ ALL_CODES = frozenset(
 RETRYABLE = frozenset({SAVE_PERSISTENCE_FAILED, INTERNAL_ERROR})
 
 
-def error_response(code: str, message: str) -> dict[str, Any]:
+def error_response(
+    code: str,
+    message: str,
+    *,
+    reason_code: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if code not in ALL_CODES:
         raise ValueError(f"unknown error code: {code}")
+    error = {
+        "code": code,
+        "message": message,
+        "retryable": code in RETRYABLE,
+    }
+    if reason_code is not None:
+        error["reason_code"] = reason_code
+    if details is not None:
+        error["details"] = details
     return {
         "ok": False,
-        "error": {
-            "code": code,
-            "message": message,
-            "retryable": code in RETRYABLE,
-        },
+        "error": error,
     }

@@ -34,18 +34,28 @@ from .evidence import (
     EVENT_VERSION_PROMOTED,
     EVENT_VERSION_RELEASED,
     EVENT_VERSION_ROLLED_BACK,
+    EVENT_VERSION_VERIFICATION,
     FAILURE_CATEGORIES,
+    INDEPENDENT_SOURCE_TYPES,
     OBSERVATION_METHODS,
     OBSERVATION_STATUSES,
     OUTCOMES,
     SOURCE_TYPES,
     VALIDITIES,
+    VERIFICATION_OUTCOMES,
     Evidence,
 )
 from .manifest import CandidateError, content_hash, normalize_candidate, scan_content
 from .registry import STATUS_CANDIDATE, STATUS_QUARANTINED, STATUS_READY, Registry
 from .search import DEFAULT_RESULTS, MAX_RESULTS, Search, tokens
 from .storage import Store, default_data_dir
+
+REASON_VERSION_NOT_CANDIDATE = "VERSION_NOT_CANDIDATE"
+REASON_VERIFICATION_MISSING = "VERIFICATION_EVIDENCE_MISSING"
+REASON_VERIFICATION_INVALID = "VERIFICATION_EVIDENCE_INVALID"
+REASON_CONTENT_HASH_MISMATCH = "CONTENT_HASH_MISMATCH"
+REASON_REGRESSION_MISSING = "REGRESSION_VERIFICATION_MISSING"
+REASON_CURRENT_CONFLICT = "CURRENT_VERSION_CONFLICT"
 
 
 class _CandidateRejected(Exception):
@@ -302,13 +312,14 @@ class ToolSeed:
         manifest = normalized["manifest"]
         content = normalized["content"]
         digest = content_hash(normalized["protocol_version"], manifest, content)
+
+        target_id = normalized.get("target_capability_id")
         status = (
             STATUS_CANDIDATE
-            if force_candidate or verdict == "review"
+            if force_candidate or verdict == "review" or target_id is not None
             else STATUS_READY
         )
 
-        target_id = normalized.get("target_capability_id")
         target_capability = None
         namespace = self._context_namespace(context)
         if target_id is not None:
@@ -492,6 +503,7 @@ class ToolSeed:
             "failure_diagnoses": self.evidence.diagnosis_counts(),
             "evolution_decisions": self.evidence.decision_counts(),
             "observations": self.evidence.observation_counts(),
+            "verifications": self.evidence.verification_counts(),
             "task_outcomes": {
                 "signals": signals,
                 "measured": signals > 0,
@@ -687,49 +699,157 @@ class ToolSeed:
         reason: str,
         evidence_ref: str | None = None,
     ) -> dict[str, Any]:
-        """Revalidate a candidate and make it ready only if the content scan is clean."""
+        """Promote a candidate only if valid independent verification is bound to it."""
         if not isinstance(version_id, str):
             return error_response(INVALID_ARGUMENT, "version_id must be a string")
         if not isinstance(reason, str) or not reason.strip():
             return error_response(INVALID_ARGUMENT, "promotion reason must be a non-empty string")
         if evidence_ref is not None and not isinstance(evidence_ref, str):
             return error_response(INVALID_ARGUMENT, "evidence_ref must be a string")
-        version = self.registry.get_version(version_id)
-        if version is None:
-            return error_response(CAPABILITY_NOT_FOUND, "that version does not exist")
-        capability = self.registry.get_capability(version["capability_id"])
-        if capability is not None and capability["archived_at"]:
-            return error_response(CAPABILITY_ARCHIVED, "archived capabilities cannot be promoted")
-        if capability is not None and capability["quarantined_at"]:
-            return error_response(
-                CAPABILITY_QUARANTINED, "release the capability quarantine before promotion"
-            )
-        if version["status"] == STATUS_READY:
-            return {
-                "ok": True,
-                "version_id": version_id,
-                "promoted": False,
-                "status": STATUS_READY,
-                "note": "version is already ready",
-            }
-        if version["status"] == STATUS_QUARANTINED:
-            return error_response(
-                CAPABILITY_QUARANTINED, "release the version quarantine before promotion"
-            )
 
-        verdict, _reasons = scan_content(version["content"])
-        if verdict is not None:
-            return error_response(
-                POLICY_BLOCKED,
-                "candidate still triggers the content review gate; edit it and save a new version",
-            )
-
-        summary = f"version promotion: {reason.strip()[:200]}"
-        if evidence_ref and evidence_ref.strip():
-            summary += f" | evidence: {evidence_ref.strip()[:200]}"
         try:
-            with self.store.transaction():
-                self.registry.promote_version(version_id)
+            with self.store.transaction(immediate=True) as db:
+                version = db.execute(
+                    "SELECT * FROM capability_versions WHERE version_id = ?", (version_id,)
+                ).fetchone()
+                if version is None:
+                    return error_response(CAPABILITY_NOT_FOUND, "that version does not exist")
+                capability = db.execute(
+                    "SELECT * FROM capabilities WHERE capability_id = ?",
+                    (version["capability_id"],),
+                ).fetchone()
+                if capability is not None and capability["archived_at"]:
+                    return error_response(
+                        CAPABILITY_ARCHIVED, "archived capabilities cannot be promoted"
+                    )
+                if capability is not None and capability["quarantined_at"]:
+                    return error_response(
+                        CAPABILITY_QUARANTINED,
+                        "release the capability quarantine before promotion",
+                    )
+                if version["status"] == STATUS_READY:
+                    return {
+                        "ok": True,
+                        "version_id": version_id,
+                        "promoted": False,
+                        "status": STATUS_READY,
+                        "note": "version is already ready",
+                    }
+                if version["status"] == STATUS_QUARANTINED:
+                    return error_response(
+                        CAPABILITY_QUARANTINED,
+                        "release the version quarantine before promotion",
+                    )
+                if version["status"] != STATUS_CANDIDATE:
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "only a candidate version can be promoted",
+                        reason_code=REASON_VERSION_NOT_CANDIDATE,
+                    )
+
+                verdict, _reasons = scan_content(version["content"])
+                if verdict is not None:
+                    return error_response(
+                        POLICY_BLOCKED,
+                        "candidate still triggers the content review gate; edit it and save a new version",
+                    )
+
+                verification = db.execute(
+                    "SELECT * FROM evidence_events "
+                    "WHERE event_type = ? AND version_id = ? "
+                    "ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                    (EVENT_VERSION_VERIFICATION, version_id),
+                ).fetchone()
+                if verification is None:
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "candidate has no version verification evidence",
+                        reason_code=REASON_VERIFICATION_MISSING,
+                    )
+                if verification["content_hash"] != version["content_hash"]:
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "verification evidence is bound to a different content hash",
+                        reason_code=REASON_CONTENT_HASH_MISMATCH,
+                    )
+                if verification["created_at"] <= version["created_at"]:
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "verification evidence must be created after the candidate version",
+                        reason_code=REASON_VERIFICATION_INVALID,
+                    )
+                if verification["source_type"] not in INDEPENDENT_SOURCE_TYPES:
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "verification evidence source is not independent",
+                        reason_code=REASON_VERIFICATION_INVALID,
+                    )
+                if verification["verification_outcome"] != "passed":
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "verification evidence did not pass",
+                        reason_code=REASON_VERIFICATION_INVALID,
+                    )
+                assessment = self.evidence.latest_validity(verification["event_id"])
+                if assessment != "valid":
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "verification evidence is not currently valid",
+                        reason_code=REASON_VERIFICATION_INVALID,
+                    )
+                try:
+                    verification_payload = json.loads(verification["verification_json"] or "{}")
+                except (TypeError, ValueError):
+                    verification_payload = None
+                if not isinstance(verification_payload, dict) or not verification_payload.get(
+                    "case_ids"
+                ):
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "verification evidence has no reproducible case reference",
+                        reason_code=REASON_VERIFICATION_INVALID,
+                    )
+                if int(version["version_number"]) > 1 and not verification_payload.get(
+                    "regression_case_ids"
+                ):
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "revision verification has no regression case reference",
+                        reason_code=REASON_REGRESSION_MISSING,
+                    )
+
+                highest_ready = db.execute(
+                    "SELECT MAX(version_number) AS n FROM capability_versions "
+                    "WHERE capability_id = ? AND status = ?",
+                    (version["capability_id"], STATUS_READY),
+                ).fetchone()
+                highest = highest_ready["n"] if highest_ready is not None else None
+                if highest is not None and int(highest) > int(version["version_number"]):
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "a newer ready version already exists; this candidate cannot become current",
+                        reason_code=REASON_CURRENT_CONFLICT,
+                    )
+
+                cursor = db.execute(
+                    "UPDATE capability_versions SET status = ? "
+                    "WHERE version_id = ? AND status = ?",
+                    (STATUS_READY, version_id, STATUS_CANDIDATE),
+                )
+                if cursor.rowcount != 1:
+                    return error_response(
+                        INVALID_ARGUMENT,
+                        "candidate state changed during promotion",
+                        reason_code=REASON_CURRENT_CONFLICT,
+                    )
+                db.execute(
+                    "UPDATE capabilities SET current_version_id = ? WHERE capability_id = ?",
+                    (version_id, version["capability_id"]),
+                )
+
+                summary = f"version promotion: {reason.strip()[:200]}"
+                if evidence_ref and evidence_ref.strip():
+                    summary += f" | evidence: {evidence_ref.strip()[:200]}"
                 self.evidence.record(
                     EVENT_VERSION_PROMOTED,
                     capability_id=version["capability_id"],
@@ -1425,6 +1545,130 @@ class ToolSeed:
             "observations_invalidated": observations_invalidated,
         }
 
+    def record_version_verification(
+        self,
+        *,
+        version_id: Any,
+        content_hash: Any,
+        outcome: Any,
+        source_type: Any,
+        verification_ref: Any,
+        verification: Any,
+    ) -> dict[str, Any]:
+        """Record a candidate-bound verification result for promotion checks."""
+        for name, value in (
+            ("version_id", version_id),
+            ("content_hash", content_hash),
+            ("outcome", outcome),
+            ("source_type", source_type),
+            ("verification_ref", verification_ref),
+        ):
+            if not isinstance(value, str) or not value:
+                return error_response(INVALID_ARGUMENT, f"{name} must be a non-empty string")
+        if outcome not in VERIFICATION_OUTCOMES:
+            return error_response(
+                INVALID_ARGUMENT,
+                "verification outcome must be passed, failed or unknown",
+            )
+        if source_type not in SOURCE_TYPES:
+            return error_response(INVALID_ARGUMENT, "source_type is not recognized")
+        if not isinstance(verification, dict):
+            return error_response(INVALID_ARGUMENT, "verification must be an object")
+
+        normalized = self._normalize_verification(verification)
+        if normalized is None:
+            return error_response(
+                INVALID_ARGUMENT,
+                "verification requires method, input_ref, artifact_ref and non-empty case_ids",
+            )
+
+        version = self.registry.get_version(version_id)
+        if version is None:
+            return error_response(CAPABILITY_NOT_FOUND, "that version does not exist")
+        capability = self.registry.get_capability(version["capability_id"])
+        if capability is not None and capability["archived_at"]:
+            return error_response(CAPABILITY_ARCHIVED, "archived capabilities cannot be verified")
+        if capability is not None and capability["quarantined_at"]:
+            return error_response(
+                CAPABILITY_QUARANTINED, "release the capability quarantine before verification"
+            )
+        if version["content_hash"] != content_hash:
+            return error_response(
+                INVALID_ARGUMENT,
+                "content_hash does not match the candidate version",
+                reason_code=REASON_CONTENT_HASH_MISMATCH,
+            )
+        if version["status"] != STATUS_CANDIDATE:
+            return error_response(
+                INVALID_ARGUMENT,
+                "verification can only be recorded against a candidate version",
+                reason_code=REASON_VERSION_NOT_CANDIDATE,
+            )
+
+        event_id, duplicate = self.evidence.record_verification(
+            capability_id=version["capability_id"],
+            version_id=version_id,
+            content_hash=content_hash,
+            outcome=outcome,
+            source_type=source_type,
+            verification_ref=verification_ref,
+            verification=normalized,
+        )
+        return {
+            "ok": True,
+            "version_id": version_id,
+            "event_id": event_id,
+            "duplicate": duplicate,
+            "verification_outcome": outcome,
+            "source_type": source_type,
+        }
+
+    @staticmethod
+    def _normalize_verification(raw: dict[str, Any]) -> dict[str, Any] | None:
+        allowed = {
+            "method",
+            "input_ref",
+            "artifact_ref",
+            "artifact_hash",
+            "verifier",
+            "case_ids",
+            "regression_case_ids",
+            "notes",
+        }
+        if set(raw) - allowed:
+            return None
+        for key in ("method", "input_ref", "artifact_ref"):
+            if not isinstance(raw.get(key), str) or not raw[key].strip():
+                return None
+        for key in ("artifact_hash", "verifier", "notes"):
+            if key in raw and (not isinstance(raw[key], str) or not raw[key].strip()):
+                return None
+        case_ids = raw.get("case_ids")
+        if (
+            not isinstance(case_ids, list)
+            or not case_ids
+            or any(not isinstance(item, str) or not item.strip() for item in case_ids)
+        ):
+            return None
+        regression_ids = raw.get("regression_case_ids")
+        if regression_ids is not None and (
+            not isinstance(regression_ids, list)
+            or any(not isinstance(item, str) or not item.strip() for item in regression_ids)
+        ):
+            return None
+        normalized = {
+            "method": raw["method"].strip(),
+            "input_ref": raw["input_ref"].strip(),
+            "artifact_ref": raw["artifact_ref"].strip(),
+            "case_ids": list(case_ids),
+        }
+        for key in ("artifact_hash", "verifier", "notes"):
+            if key in raw:
+                normalized[key] = raw[key].strip()
+        if regression_ids is not None:
+            normalized["regression_case_ids"] = list(regression_ids)
+        return normalized
+
     def record_task_outcome(
         self,
         *,
@@ -1485,6 +1729,7 @@ class ToolSeed:
             task_id=task_id,
             quantity=1,
             summary=(str(summary)[:200] if summary else None),
+            content_hash=version["content_hash"],
         )
         return {"ok": True, "outcome": outcome, "source_type": source_type}
 

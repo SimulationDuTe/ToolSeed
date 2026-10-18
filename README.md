@@ -118,14 +118,17 @@ P0 只有一种候选传输格式：一个 JSON 对象，包含对象形式的 `
 - 精确重复的判断是：规范化后的 `name` 与 `content_hash` 都相同。命中时返回既有
   Capability/Version，`duplicate: true`，不创建重复版本。
 - 提供 `target_capability_id` 时，该能力必须存在且未 `archived`；相同内容哈希返回既有版本，
-  否则新增版本。
+  否则新增一个 **candidate** 版本，不会替换当前版本。
+- 只有新建 Capability 的 clean 版本会直接进入 `ready`；修订版本必须经过
+  `record-verification` + `promote-version`，验证证据必须绑定版本内容哈希、发生在候选创建之后，
+  且 revision 必须提供 `regression_case_ids`。
 - 非精确重复的新保存会在响应中返回 `possible_duplicates`，按同名、共享标签和元数据相似度
   给出最多 3 条提示；它只用于人工判断，不阻塞保存，也不自动合并。
 - 内容检查分三档：
   - 明显的凭据/密钥或“绕过策略/泄露秘密”指令 → 拒绝保存，返回 `POLICY_BLOCKED`；
   - 破坏性或高风险操作（如 `rm -rf`、`drop table`）→ 允许保存，但版本保持 `candidate`，
     响应里附 `notes`；
-  - 未命中 → 版本进入 `ready`。
+  - 未命中且是新建 Capability → 版本进入 `ready`；修订版本仍为 `candidate`。
 - 保存的 Procedure 是**不可信数据**。交付时只作为能力材料，不得覆盖系统/开发者策略，
   也不得凭内容自我授权。
 - 保存时的 `intent` 与已知来源字段（`source`、`task_id`、`session_id`、`harness`、
@@ -307,9 +310,10 @@ python -m toolseed migrate-flatten --data-dir .toolseed \
 - `release_capability(capability_id, reason, evidence_ref?)`：审核后解除能力级隔离，写入审计事件；
 - `quarantine_version(version_id, reason)`：隔离单个版本；
 - `release_version(version_id, reason, evidence_ref?)`：解除版本隔离，回到 `candidate`；
-- `promote_version(version_id, reason, evidence_ref?)`：重新检查内容后把候选版本提升为 `ready`，高风险内容会被拒绝；
+- `promote_version(version_id, reason, evidence_ref?)`：仅在候选版本绑定有效独立验证证据、内容哈希匹配、验证晚于候选创建且满足回归要求时，把候选提升为 `ready` 并更新 current；
+- `record_version_verification(version_id, content_hash, outcome, source_type, verification_ref, verification)`：记录绑定候选版本和内容哈希的 `version_verification` 证据；相同内容重复提交按 `signal_key` 幂等；
 - `rollback_version(capability_id, version_id, reason, evidence_ref?)`：回滚到更旧的 `ready` 版本并记录事件；
-- `version_report(version_id)`：按版本汇总交付、任务结果、诊断、观察、证据有效性与回滚；
+- `version_report(version_id)`：按版本汇总交付、任务结果、验证结果、诊断、观察、证据有效性与回滚；
 - `archive(capability_id, reason)`：退役一个能力；
 - `record_task_outcome(...)`：显式记录带来源的任务结果信号；
 - `assess_evidence(...)` / `evidence_validity(...)`：追加证据有效性评估并读取当前投影；
@@ -334,7 +338,8 @@ python -m toolseed quarantine '{"capability_id": "cap_xxx", "reason": "manual"}'
 python -m toolseed quarantine-version '{"version_id": "ver_xxx"}'
 python -m toolseed release '{"capability_id": "cap_xxx", "reason": "incident reviewed", "evidence_ref": "ticket-1"}'
 python -m toolseed release-version '{"version_id": "ver_xxx", "reason": "reviewed"}'
-python -m toolseed promote-version '{"version_id": "ver_xxx", "reason": "content rechecked"}'
+python -m toolseed record-verification '{"version_id": "ver_xxx", "content_hash": "sha256:...", "outcome": "passed", "source_type": "test_runner", "verification_ref": "test-run:1", "verification": {"method": "pytest", "input_ref": "case:new", "artifact_ref": "log:1", "case_ids": ["case:new"], "regression_case_ids": ["case:old"]}}'
+python -m toolseed promote-version '{"version_id": "ver_xxx", "reason": "verified"}'
 python -m toolseed rollback '{"capability_id": "cap_xxx", "version_id": "ver_xxx", "reason": "regression"}'
 python -m toolseed version-report '{"version_id": "ver_xxx"}'
 python -m toolseed maintenance
@@ -458,7 +463,7 @@ python -m unittest discover -s tests -t . -v
 - Procedure 交付、Invocation、证据事件追加与任务结果分离；
 - 统计中的未测量耗时/Token 保持 `unknown`，无任务信号时 `measured=false`；
 - LocalAdapter 工具映射、健康检查与错误翻译；
-- CLI 的 save/run/record-outcome/stats/archive/release/release-version/promote-version/quarantine；
+- CLI 的 save/run/record-outcome/record-verification/stats/archive/release/release-version/promote-version/quarantine；
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
 - schema v2/v3 迁移、共享数据目录、namespace 隔离、迁移锁与 `busy_timeout`；

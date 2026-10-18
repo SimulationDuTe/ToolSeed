@@ -58,10 +58,13 @@ Save only when reuse is plausible and the method is describable.
 - Parameterise what actually varies. Do not embed secrets, tokens, credentials
   or task-specific absolute paths.
 - To revise an existing capability, pass `target_capability_id`; this creates a
-  new version and never rewrites the old one.
+  new **candidate** version and never rewrites or replaces the current version.
+  A candidate only becomes current after a separate verified promotion.
 
-`status: accepted` means stored. `version_status: ready` means it passed the
-structural gate — not that the method is correct or verified.
+`status: accepted` means stored. A revision candidate is not ready or current
+just because its content scan passed. `version_status: ready` on a newly created
+capability means it passed the structural gate — not that the method is correct
+or verified.
 
 ## 6. Report accurately
 

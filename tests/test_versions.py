@@ -1,7 +1,7 @@
 """Immutable versions and exact-duplicate handling (P0-SLIM §4.2, §5)."""
 from __future__ import annotations
 
-from tests.helpers import CONTENT, CoreTest, candidate
+from tests.helpers import CONTENT, CoreTest, candidate, verify_version
 
 EXTENDED = CONTENT + "4. 复核修复结果并记录耗时。\n"
 
@@ -50,12 +50,18 @@ class VersionTest(CoreTest):
         self.assertEqual(versions[0]["content"], CONTENT)
         self.assertEqual(versions[1]["content"], EXTENDED)
 
-    def test_current_pointer_follows_the_new_ready_version(self) -> None:
+    def test_current_pointer_follows_verified_new_version(self) -> None:
         first = self.save()
         second = self.core.toolbox_save(
             candidate(target_capability_id=first["capability_id"], content=EXTENDED),
             "extend the method",
         )
+        self.assertEqual(second["version_status"], "candidate")
+        capability = self.core.registry.get_capability(first["capability_id"])
+        self.assertEqual(capability["current_version_id"], first["version_id"])
+        verify_version(self.core, second)
+        promoted = self.core.promote_version(second["version_id"], "reviewed")
+        self.assertTrue(promoted["promoted"], promoted)
         capability = self.core.registry.get_capability(first["capability_id"])
         self.assertEqual(capability["current_version_id"], second["version_id"])
         run = self.core.toolbox_run(first["capability_id"])

@@ -315,6 +315,7 @@ def flatten_merge_graph(
             report["backup"] = str(backup_path)
 
         merged: list[dict[str, Any]] = []
+        schema = int(db.execute("PRAGMA user_version").fetchone()[0])
         db.execute("BEGIN IMMEDIATE")
         try:
             for index, component in enumerate(relevant):
@@ -373,8 +374,12 @@ def flatten_merge_graph(
                         ),
                     )
             for statement in _statements(MIGRATIONS[5]):
-                db.execute(statement)
-            db.execute("PRAGMA user_version = 5")
+                if schema < 5:
+                    db.execute(statement)
+            for statement in _statements(MIGRATIONS[6]):
+                if schema < 6:
+                    db.execute(statement)
+            db.execute(f"PRAGMA user_version = {max(MIGRATIONS)}")
             db.commit()
         except BaseException:
             db.rollback()
@@ -526,6 +531,7 @@ def repair_duplicate_identities(
     }
     before = inspect_duplicate_identities(root)
     report["schema_version"] = before.get("schema_version")
+    schema = int(before.get("schema_version") or 0)
     report["groups_before"] = before.get("group_count")
     if before.get("error"):
         report["error"] = before["error"]
@@ -744,8 +750,12 @@ def repair_duplicate_identities(
                     )
                     merged.append(item)
             for statement in _statements(MIGRATIONS[5]):
-                db.execute(statement)
-            db.execute("PRAGMA user_version = 5")
+                if schema < 5:
+                    db.execute(statement)
+            for statement in _statements(MIGRATIONS[6]):
+                if schema < 6:
+                    db.execute(statement)
+            db.execute(f"PRAGMA user_version = {max(MIGRATIONS)}")
             db.commit()
         except BaseException:
             db.rollback()

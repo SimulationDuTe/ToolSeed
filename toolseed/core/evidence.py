@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from typing import Any
 
 from .registry import new_id, now
@@ -15,6 +16,8 @@ from .storage import Store
 
 OUTCOMES = ("success", "failure", "partial", "unknown")
 SOURCE_TYPES = ("core", "agent", "harness", "test_runner", "external_system", "human")
+VERIFICATION_OUTCOMES = ("passed", "failed", "unknown")
+INDEPENDENT_SOURCE_TYPES = ("test_runner", "external_system", "human")
 VALIDITIES = ("valid", "stale", "superseded")
 OBSERVATION_METHODS = ("rule", "model", "human")
 OBSERVATION_STATUSES = ("active", "stale", "retracted")
@@ -45,9 +48,15 @@ EVENT_ARCHIVED = "capability_archived"
 EVENT_VERSION_RELEASED = "version_released"
 EVENT_VERSION_PROMOTED = "version_promoted"
 EVENT_VERSION_ROLLED_BACK = "version_rolled_back"
+EVENT_VERSION_VERIFICATION = "version_verification"
 
-REVALIDATION_EVENT_TYPES = (EVENT_DELIVERED, EVENT_TASK_OUTCOME)
+REVALIDATION_EVENT_TYPES = (EVENT_DELIVERED, EVENT_TASK_OUTCOME, EVENT_VERSION_VERIFICATION)
 EVENT_DUPLICATE = "duplicate_save"
+
+
+def make_signal_key(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 class Evidence:
@@ -66,17 +75,30 @@ class Evidence:
         task_id: str | None = None,
         quantity: int = 0,
         summary: str | None = None,
+        content_hash: str | None = None,
+        signal_key: str | None = None,
+        verification_outcome: str | None = None,
+        verification_json: str | None = None,
     ) -> str:
         if outcome not in OUTCOMES:
             raise ValueError(f"unsupported outcome: {outcome}")
         if source_type not in SOURCE_TYPES:
             raise ValueError(f"unsupported source_type: {source_type}")
+        if verification_outcome is not None and verification_outcome not in VERIFICATION_OUTCOMES:
+            raise ValueError(f"unsupported verification_outcome: {verification_outcome}")
+        if content_hash is not None and not isinstance(content_hash, str):
+            raise ValueError("content_hash must be a string or None")
+        if signal_key is not None and not isinstance(signal_key, str):
+            raise ValueError("signal_key must be a string or None")
+        if verification_json is not None and not isinstance(verification_json, str):
+            raise ValueError("verification_json must be a JSON string or None")
         event_id = new_id("ev")
         with self.store.transaction() as db:
             db.execute(
                 "INSERT INTO evidence_events (event_id, event_type, created_at, source_type, "
-                "capability_id, version_id, invocation_id, task_id, outcome, quantity, summary) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "capability_id, version_id, invocation_id, task_id, outcome, quantity, summary, "
+                "content_hash, signal_key, verification_outcome, verification_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     event_id,
                     event_type,
@@ -89,9 +111,73 @@ class Evidence:
                     outcome,
                     int(quantity),
                     summary,
+                    content_hash,
+                    signal_key,
+                    verification_outcome,
+                    verification_json,
                 ),
             )
         return event_id
+
+    def record_verification(
+        self,
+        *,
+        capability_id: str,
+        version_id: str,
+        content_hash: str,
+        outcome: str,
+        source_type: str,
+        verification_ref: str,
+        verification: dict[str, Any],
+    ) -> tuple[str, bool]:
+        if outcome not in VERIFICATION_OUTCOMES:
+            raise ValueError(f"unsupported verification outcome: {outcome}")
+        payload = {"verification_ref": verification_ref, **verification}
+        signal_key = make_signal_key(
+            {
+                "kind": EVENT_VERSION_VERIFICATION,
+                "capability_id": capability_id,
+                "version_id": version_id,
+                "content_hash": content_hash,
+                "outcome": outcome,
+                "source_type": source_type,
+                "verification": payload,
+            }
+        )
+        existing = self.store.db.execute(
+            "SELECT event_id FROM evidence_events WHERE signal_key = ?", (signal_key,)
+        ).fetchone()
+        if existing is not None:
+            return existing["event_id"], True
+
+        mapped_outcome = {
+            "passed": "success",
+            "failed": "failure",
+            "unknown": "unknown",
+        }[outcome]
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        try:
+            event_id = self.record(
+                EVENT_VERSION_VERIFICATION,
+                source_type=source_type,
+                outcome=mapped_outcome,
+                capability_id=capability_id,
+                version_id=version_id,
+                summary=f"version verification: {outcome}",
+                content_hash=content_hash,
+                signal_key=signal_key,
+                verification_outcome=outcome,
+                verification_json=encoded,
+            )
+        except sqlite3.IntegrityError:
+            existing = self.store.db.execute(
+                "SELECT event_id FROM evidence_events WHERE signal_key = ?", (signal_key,)
+            ).fetchone()
+            if existing is None:
+                raise
+            return existing["event_id"], True
+        self.assess(event_id, "valid", "version_verification_recorded")
+        return event_id, False
 
     def record_invocation(
         self,
@@ -147,6 +233,17 @@ class Evidence:
             (EVENT_TASK_OUTCOME,),
         ).fetchall():
             counts[row["outcome"]] = int(row["n"])
+        return counts
+
+    def verification_counts(self) -> dict[str, int]:
+        counts = {outcome: 0 for outcome in VERIFICATION_OUTCOMES}
+        for row in self.store.db.execute(
+            "SELECT verification_outcome, COUNT(*) AS n FROM evidence_events "
+            "WHERE event_type = ? GROUP BY verification_outcome",
+            (EVENT_VERSION_VERIFICATION,),
+        ).fetchall():
+            if row["verification_outcome"] in counts:
+                counts[row["verification_outcome"]] = int(row["n"])
         return counts
 
     def total_events(self) -> int:
@@ -299,9 +396,10 @@ class Evidence:
 
     def stale_evidence_groups(self) -> list[dict[str, Any]]:
         groups: dict[str, list[str]] = {}
+        placeholders = ", ".join("?" for _ in REVALIDATION_EVENT_TYPES)
         for row in self.store.db.execute(
             "SELECT event_id, version_id FROM evidence_events "
-            "WHERE version_id IS NOT NULL AND event_type IN (?, ?)",
+            f"WHERE version_id IS NOT NULL AND event_type IN ({placeholders})",
             REVALIDATION_EVENT_TYPES,
         ).fetchall():
             latest = self.latest_assessment(row["event_id"])
@@ -713,6 +811,15 @@ class Evidence:
         ).fetchall():
             outcomes[row["outcome"]] = int(row["n"])
 
+        verifications = {outcome: 0 for outcome in VERIFICATION_OUTCOMES}
+        for row in self.store.db.execute(
+            "SELECT verification_outcome, COUNT(*) AS n FROM evidence_events "
+            "WHERE event_type = ? AND version_id = ? GROUP BY verification_outcome",
+            (EVENT_VERSION_VERIFICATION, version_id),
+        ).fetchall():
+            if row["verification_outcome"] in verifications:
+                verifications[row["verification_outcome"]] = int(row["n"])
+
         diagnoses = {"open": 0, "repair_proposed": 0, "dismissed": 0}
         for row in self.store.db.execute(
             "SELECT status, COUNT(*) AS n FROM failure_diagnoses "
@@ -756,6 +863,7 @@ class Evidence:
             "status": version["status"],
             "deliveries": deliveries,
             "task_outcomes": outcomes,
+            "verifications": verifications,
             "diagnoses": diagnoses,
             "observations": observations,
             "evidence_validity": validity,
