@@ -418,6 +418,26 @@ args = []
 实际 Claude Code / Cursor / Codex 客户端 UI 的接入尚未逐个人工验证；配置命令应使用绝对路径
 `toolseed-mcp`，或等价的 `python -m toolseed.mcp_server`。
 
+## 发布包验证
+
+```bash
+python -m build
+python scripts/twine_check.py
+python scripts/verify_release.py --dist dist
+```
+
+验证内容：
+
+- 构建 sdist 与 wheel；
+- `twine check` 检查元数据；
+- 在临时干净 venv 中安装 wheel，而不是从源码目录导入；
+- 包导入路径不在源码树内；
+- `toolseed-mcp` entry point 存在且 `--help` 可运行；
+- `toolseed/skill/SKILL.md` 已打进 wheel；
+- 通过安装后的 `toolseed-mcp` 启动 stdio，枚举四个工具并调用 `toolbox_stats`。
+
+CI 的 `package` job 在 Ubuntu / Windows / macOS 上执行同一套检查。
+
 ## 测试
 
 ```bash
@@ -464,6 +484,7 @@ python scripts/quality_gate.py
 - 本机 `.venv` 已安装 `ruff` / `mypy`，当前四项全部 PASS；未安装时明确显示 `SKIP`，不会伪装成通过；
 - `.github/workflows/quality.yml` 在 Linux/Windows/macOS 和 Python 3.11/3.13 上安装 `.[dev]`
   与官方 MCP SDK，然后运行完整质量门禁；
+- 同一 workflow 的 `package` job 在三个平台上构建并验证 wheel；
 - 开发依赖：`pip install -e .[dev]` 或 `uv pip install ruff mypy`。
 
 ## 价值对照实验

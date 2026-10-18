@@ -3,6 +3,7 @@ name: quality
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,3 +27,25 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Run quality gate
         run: python scripts/quality_gate.py
+
+  package:
+    name: package / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install packaging tools
+        run: python -m pip install build twine
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Check distribution metadata
+        run: python scripts/twine_check.py
+      - name: Verify clean wheel install and MCP tools
+        run: python scripts/verify_release.py --dist dist

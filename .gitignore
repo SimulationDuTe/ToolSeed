@@ -27,6 +27,8 @@ tests/.data/
 .mcp-site/
 .uv-cache/
 .pip-tmp/
+.build-tmp/
+.release-venv/
 
 # ============ 日志 ============
 *.log
