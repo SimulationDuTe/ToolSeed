@@ -242,7 +242,7 @@ class Registry:
     def find_version_by_hash(self, capability_id: str, digest: str) -> sqlite3.Row | None:
         return self.store.db.execute(
             "SELECT * FROM capability_versions WHERE capability_id = ? AND content_hash = ? "
-            "ORDER BY version_number DESC",
+            "AND duplicate_of IS NULL ORDER BY version_number DESC",
             (capability_id, digest),
         ).fetchone()
 
@@ -253,6 +253,7 @@ class Registry:
             "SELECT c.*, v.version_id AS matched_version_id "
             "FROM capabilities c JOIN capability_versions v ON v.capability_id = c.capability_id "
             "WHERE c.name = ? AND c.namespace = ? AND v.content_hash = ? "
+            "  AND v.duplicate_of IS NULL "
             "ORDER BY c.created_at LIMIT 1",
             (name, namespace, digest),
         ).fetchone()
@@ -270,6 +271,7 @@ class Registry:
             "SELECT c.*, v.version_id AS matched_version_id "
             "FROM capabilities c JOIN capability_versions v ON v.capability_id = c.capability_id "
             "WHERE v.namespace = ? AND v.name = ? AND v.content_hash = ? "
+            "  AND v.duplicate_of IS NULL "
             "ORDER BY c.created_at LIMIT 1",
             (namespace, name, digest),
         ).fetchone()

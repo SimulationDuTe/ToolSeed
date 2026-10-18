@@ -149,14 +149,25 @@ SET namespace = COALESCE(
       (SELECT c.name FROM capabilities c
        WHERE c.capability_id = capability_versions.capability_id),
       '');
+"""
+
+MIGRATION_4 = """
+ALTER TABLE capability_versions ADD COLUMN duplicate_of TEXT;
+DROP INDEX IF EXISTS idx_versions_identity;
+"""
+
+MIGRATION_5 = """
 CREATE UNIQUE INDEX IF NOT EXISTS idx_versions_identity
-  ON capability_versions(namespace, name, content_hash);
+  ON capability_versions(namespace, name, content_hash)
+  WHERE duplicate_of IS NULL;
 """
 
 MIGRATIONS: dict[int, str] = {
     1: SCHEMA,
     2: MIGRATION_2,
     3: MIGRATION_3,
+    4: MIGRATION_4,
+    5: MIGRATION_5,
 }
 
 

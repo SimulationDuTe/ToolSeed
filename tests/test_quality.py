@@ -12,10 +12,10 @@ class StorageQualityTest(CoreTest):
     case = "quality-storage"
 
     def test_schema_version_is_recorded_and_reopen_is_idempotent(self) -> None:
-        self.assertEqual(self.core.store.schema_version, 3)
+        self.assertEqual(self.core.store.schema_version, 5)
         self.core.close()
         self.core = ToolSeed(str(self.dir))
-        self.assertEqual(self.core.store.schema_version, 3)
+        self.assertEqual(self.core.store.schema_version, 5)
 
     def test_busy_timeout_and_legacy_v1_migration(self) -> None:
         timeout = self.core.store.db.execute("PRAGMA busy_timeout").fetchone()[0]
@@ -39,7 +39,7 @@ class StorageQualityTest(CoreTest):
 
         migrated = ToolSeed(str(legacy))
         try:
-            self.assertEqual(migrated.store.schema_version, 3)
+            self.assertEqual(migrated.store.schema_version, 5)
             columns = {
                 row["name"]
                 for row in migrated.store.db.execute("PRAGMA table_info(capabilities)")

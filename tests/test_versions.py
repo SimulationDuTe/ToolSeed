@@ -26,6 +26,19 @@ class VersionTest(CoreTest):
         self.assertEqual(second["version"], 2)
         self.assertNotEqual(second["version_id"], first["version_id"])
 
+    def test_target_version_name_must_match_capability(self) -> None:
+        first = self.save()
+        rejected = self.core.toolbox_save(
+            candidate(
+                manifest={"name": "different_name"},
+                target_capability_id=first["capability_id"],
+                content=EXTENDED,
+            ),
+            "rename attempt",
+        )
+        self.assertEqual(rejected["error"]["code"], "INVALID_ARGUMENT")
+        self.assertEqual(len(self.core.registry.list_versions(first["capability_id"])), 1)
+
     def test_old_version_is_immutable(self) -> None:
         first = self.save()
         self.core.toolbox_save(

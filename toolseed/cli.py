@@ -7,6 +7,12 @@ import sys
 from typing import Any, cast
 
 from .core.api import ToolSeed
+from .core.migration import (
+    flatten_merge_graph,
+    inspect_duplicate_identities,
+    repair_duplicate_identities,
+)
+from .core.storage import MigrationConflict
 
 
 def _payload(raw: str | None) -> dict[str, Any]:
@@ -45,11 +51,48 @@ def main(argv: list[str] | None = None) -> int:
             "expire-version-observations",
             "archive",
             "record-outcome",
+            "migrate-check",
+            "migrate-repair",
+            "migrate-flatten",
         ],
     )
     parser.add_argument("payload", nargs="?", default=None, help="JSON object; omitted reads stdin")
     parser.add_argument("--data-dir", default=None)
+    parser.add_argument("--canonical", action="append", default=None)
+    parser.add_argument("--merge-capability", action="append", default=None)
+    parser.add_argument("--no-backup", action="store_true")
     namespace = parser.parse_args(argv)
+
+    if namespace.operation == "migrate-check":
+        result = inspect_duplicate_identities(namespace.data_dir)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["ok"] else 2
+
+    if namespace.operation == "migrate-repair":
+        if not namespace.canonical:
+            print(json.dumps({"ok": False, "error": "--canonical is required"}, indent=2))
+            return 2
+        result = repair_duplicate_identities(
+            namespace.data_dir,
+            namespace.canonical,
+            merge_capabilities=namespace.merge_capability,
+            make_backup=not namespace.no_backup,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["ok"] else 2
+
+    if namespace.operation == "migrate-flatten":
+        if not namespace.canonical:
+            print(json.dumps({"ok": False, "error": "--canonical is required"}, indent=2))
+            return 2
+        result = flatten_merge_graph(
+            namespace.data_dir,
+            namespace.canonical,
+            merge_capabilities=namespace.merge_capability,
+            make_backup=not namespace.no_backup,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["ok"] else 2
 
     raw = namespace.payload
     if raw is None and namespace.operation != "stats" and not sys.stdin.isatty():
@@ -63,7 +106,24 @@ def main(argv: list[str] | None = None) -> int:
     intent = payload.get("intent", "")
     context = payload.get("context")
 
-    app = ToolSeed(namespace.data_dir)
+    try:
+        app = ToolSeed(namespace.data_dir)
+    except MigrationConflict as exc:
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": str(exc),
+                    "hint": (
+                        "run: python -m toolseed migrate-check "
+                        f"--data-dir {namespace.data_dir or '~/.toolseed'}"
+                    ),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 2
     try:
         if namespace.operation == "search":
             result = app.toolbox_search(payload.get("query", ""), context)

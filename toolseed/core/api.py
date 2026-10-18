@@ -317,6 +317,11 @@ class ToolSeed:
                 return error_response(CAPABILITY_NOT_FOUND, "target_capability_id does not exist")
             if target_capability["archived_at"]:
                 return error_response(CAPABILITY_ARCHIVED, "target capability is archived")
+            if manifest["name"] != target_capability["name"]:
+                return error_response(
+                    INVALID_ARGUMENT,
+                    "target version name must match capability name",
+                )
             namespace = target_capability["namespace"]
             existing = self.registry.find_version_by_hash(target_id, digest)
             if existing is not None:

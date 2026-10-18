@@ -22,6 +22,7 @@ else:
     _MCP_IMPORT_ERROR = None
 
 from .core.api import ToolSeed
+from .core.storage import MigrationConflict
 
 _CORE: ToolSeed | None = None
 _CORE_LOCK = threading.Lock()
@@ -92,7 +93,16 @@ def main() -> None:
         help="override TOOLSEED_DATA_DIR / ~/.toolseed",
     )
     args = parser.parse_args()
-    core = ToolSeed(args.data_dir) if args.data_dir else None
+    try:
+        core = ToolSeed(args.data_dir) if args.data_dir else ToolSeed()
+    except MigrationConflict as exc:
+        print(str(exc), file=sys.stderr)
+        print(
+            "run: python -m toolseed migrate-check "
+            f"--data-dir {args.data_dir or '~/.toolseed'}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
     try:
         create_server(core).run()
     except RuntimeError as exc:

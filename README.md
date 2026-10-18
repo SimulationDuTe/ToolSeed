@@ -227,14 +227,77 @@ SQLite 文件。这样不同 MCP 客户端可以共享同一能力库；项目�
 不写 `content/` 文件。`content_hash` 由 `protocol_version`、Manifest 和 `content` 的确定性 JSON
 （键按字典序、无多余空白）计算 SHA-256，格式为 `sha256:...`。
 
-Schema 使用 `PRAGMA user_version` 迁移，当前为 v3：
+Schema 使用 `PRAGMA user_version` 迁移，当前为 v5：
 
 - v2 增加 `capabilities.namespace`；
-- v3 在版本上记录 `namespace` / `name`，并建立 `(namespace, name, content_hash)` 唯一索引，
-  防止并发保存产生重复能力；
-- 迁移在单个事务内逐条执行；v3 建索引前先做重复身份预检，发现冲突时停在 v2，
-  不留下半迁移 Schema；
+- v3 在版本上记录 `namespace` / `name` 并回填；
+- v4 增加 `duplicate_of`，并移除旧的全局唯一索引；
+- v5 建立 `(namespace, name, content_hash)` 部分唯一索引，只约束 `duplicate_of IS NULL` 的版本；
+- 迁移在单个事务内逐条执行；v3 前先做重复身份预检，发现冲突时停在 v2，不留下半迁移 Schema；
+- `migrate-check` 只读报告重复组、版本状态、current 指针和引用计数；有重复时退出码为 2；
+- 普通 CLI / `toolseed-mcp` 启动遇到迁移冲突时输出 `migrate-check` 提示并以非零状态退出；
+- `migrate-repair` 显式归并重复组；跨 capability 必须同时指定 `--merge-capability`，
+  保留版本状态、current 指针、调用与证据引用；
 - 启动时通过跨进程迁移锁串行化，SQLite 启用 WAL 与 `busy_timeout`，支持多个 MCP 进程共享目录。
+
+### 迁移诊断
+
+v3 建唯一索引前如发现历史重复身份，启动会停在 v2。先运行只读诊断：
+
+```bash
+python -m toolseed migrate-check --data-dir .toolseed
+```
+
+输出包括：
+
+- `schema_version`；
+- 重复组 `(namespace, name, content_hash)`；
+- 每个版本的 ID、能力、版本号、状态、创建时间；
+- `is_current`；
+- invocations / evidence / diagnoses / observations 引用计数；
+- `merge_issues`：自引用、目标缺失、跨 capability、链式归并和环；
+- 建议的 canonical 版本（只建议，不自动修改）。
+
+有重复时退出码为 `2`。该命令只读，不迁移、不写数据库。
+
+显式修复：
+
+```bash
+python -m toolseed migrate-repair --data-dir .toolseed --canonical ver_a --canonical ver_c
+```
+
+- 默认先通过 SQLite backup API 备份，`--no-backup` 可关闭；
+- 每个重复组必须提供一个 canonical，且只能提供一个；
+- 跨 capability 时必须为每个 loser capability 传 `--merge-capability`；
+- 不会改版本状态、current 指针或历史引用；
+- 其他版本设置 `duplicate_of=canonical`；
+- loser capability 在同一事务中归档，历史版本与引用保留；
+- 写入 `version_merged` / `capability_merged` 审计事件；
+- 所有组在同一个事务中完成 v3/v4/v5 Schema、归并和索引，失败整体回滚；
+- 已有自引用、缺失目标、链式归并或环时拒绝修复；
+- 重复执行已修复库会返回 `already_repaired`。
+
+跨 capability 示例：
+
+```bash
+python -m toolseed migrate-repair --data-dir .toolseed \
+  --canonical ver_a \
+  --merge-capability cap_b
+```
+
+链/环显式 flatten：
+
+```bash
+python -m toolseed migrate-flatten --data-dir .toolseed \
+  --canonical ver_a
+```
+
+- 只对 `migrate-check` 报告的非法链/环组件生效；
+- 每个组件必须显式指定一个 canonical；
+- 所有非 canonical 版本直接归并到 canonical；
+- 跨 capability 组件同样要求 `--merge-capability`；
+- 写 `version_flattened` 审计事件；
+- 没有非法图时返回 `already_clean`。
 
 ## 管理操作与 CLI
 
@@ -285,6 +348,7 @@ python -m toolseed set-observation-status '{"observation_id": "obs_xxx", "status
 python -m toolseed expire-version-observations '{"version_id": "ver_xxx", "reason_code": "runtime_changed"}'
 python -m toolseed archive '{"capability_id": "cap_xxx"}'
 python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "ver_xxx", "invocation_id": "inv_xxx", "outcome": "success", "source_type": "test_runner"}'
+python -m toolseed migrate-check --data-dir .toolseed
 ```
 
 ## Adapter
@@ -346,7 +410,7 @@ SDK，因此还没有做端到端验证，实际配置请使用绝对路径并�
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **156 项**测试；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
+当前 **175 项**测试；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -361,7 +425,13 @@ python -m unittest discover -s tests -t . -v
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
 - schema v2/v3 迁移、共享数据目录、namespace 隔离、迁移锁与 `busy_timeout`；
-- v3 重复身份预检、迁移失败整体回滚且 `user_version` 保持一致；
+- v3/v4/v5 重复身份预检、迁移失败整体回滚且 `user_version` 保持一致；
+- `migrate-check` 只读诊断、重复组/引用计数/current 指针报告；
+- `migrate-repair` 显式归并、多组一次事务、跨 capability 归档、备份、审计、幂等和非法 canonical 拒绝；
+- 归并图校验：自引用、缺失目标、跨 capability、链式和环；
+- `migrate-flatten` 显式 flatten 链/环并审计；
+- 普通 CLI / MCP 迁移冲突提示；
+- v3 旧全局索引升级到 v5 部分索引；
 - 两个连接并发保存同一候选时只生成一个能力/版本（唯一身份索引兜底）；
 - P1 证据与观察自动失效、维护报告、去重维护决策与应用、重新验证决策闭环、能力观察、版本报告与回滚、失败诊断、修复候选、重复候选提示与统计；
 - schema 版本迁移、嵌套事务回滚、回滚/修复候选原子性、invocation 归属校验；

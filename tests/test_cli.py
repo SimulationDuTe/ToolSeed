@@ -8,6 +8,7 @@ import shutil
 import unittest
 from pathlib import Path
 
+from tests.test_migrations import _add_cross_capability, _v2_database
 from toolseed import cli
 
 BASE = Path(__file__).resolve().parent / ".data" / "cli"
@@ -44,6 +45,56 @@ class CliTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         shutil.rmtree(BASE, ignore_errors=True)
+
+    def test_migrate_repair_cross_capability_from_cli(self) -> None:
+        data = BASE / "migrate-cross"
+        _v2_database(data, duplicates=True)
+        _add_cross_capability(data)
+
+        code, report = call(
+            "migrate-repair",
+            "--data-dir",
+            str(data),
+            "--canonical",
+            "ver_a",
+            "--merge-capability",
+            "cap_b",
+            "--no-backup",
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(report["ok"], report)
+        self.assertEqual(report["merged_capabilities"], ["cap_b"])
+
+        code, report = call("migrate-check", "--data-dir", str(data))
+        self.assertEqual(code, 0)
+        self.assertTrue(report["ok"], report)
+        self.assertEqual(report["groups"], [])
+
+    def test_migrate_check_and_repair_are_routed_before_core(self) -> None:
+        missing = BASE / "missing"
+        code, report = call("migrate-check", "--data-dir", str(missing))
+        self.assertEqual(code, 0)
+        self.assertTrue(report["read_only"])
+        self.assertIn("database does not exist", report["error"])
+
+        code, report = call(
+            "migrate-repair",
+            "--data-dir",
+            str(missing),
+            "--canonical",
+            "ver_missing",
+        )
+        self.assertEqual(code, 2)
+        self.assertFalse(report["ok"])
+
+    def test_normal_command_reports_migration_conflict(self) -> None:
+        data = BASE / "conflict"
+        _v2_database(data, duplicates=True)
+        code, report = call("stats", "--data-dir", str(data))
+        self.assertEqual(code, 2)
+        self.assertFalse(report["ok"])
+        self.assertIn("migration stopped", report["error"])
+        self.assertIn("migrate-check", report["hint"])
 
     def test_save_run_record_outcome_and_stats(self) -> None:
         code, saved = call(
