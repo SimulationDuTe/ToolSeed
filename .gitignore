@@ -24,6 +24,9 @@ tests/.data/
 
 # ============ 本地项目缓存 ============
 .toolseed/
+.mcp-site/
+.uv-cache/
+.pip-tmp/
 
 # ============ 日志 ============
 *.log

@@ -1,0 +1,102 @@
+"""Official MCP stdio server for ToolSeed.
+
+Uses the Model Context Protocol Python SDK (`mcp`), exposing exactly the four
+public ToolSeed tools. The Core remains independent of the SDK; this module is
+only a transport adapter.
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+import threading
+from typing import Any
+
+try:
+    from mcp.server import MCPServer
+except ModuleNotFoundError as exc:  # pragma: no cover - exercised without SDK
+    MCPServer = None  # type: ignore[assignment]
+    _MCP_IMPORT_ERROR: ModuleNotFoundError | None = exc
+else:
+    _MCP_IMPORT_ERROR = None
+
+from .core.api import ToolSeed
+
+_CORE: ToolSeed | None = None
+_CORE_LOCK = threading.Lock()
+
+
+def get_core() -> ToolSeed:
+    global _CORE
+    with _CORE_LOCK:
+        if _CORE is None:
+            _CORE = ToolSeed()
+        return _CORE
+
+
+def create_server(core: ToolSeed | None = None) -> Any:
+    if MCPServer is None:
+        raise RuntimeError(
+            'official MCP SDK is not installed; run: pip install "mcp[cli]"'
+        ) from _MCP_IMPORT_ERROR
+    server = MCPServer("ToolSeed")
+    lock = threading.Lock()
+
+    def call(method: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        target = core if core is not None else get_core()
+        # ToolSeed wraps one SQLite connection; serialize calls within this
+        # MCP server process. Cross-process access is handled by SQLite WAL.
+        with lock:
+            return method(target, *args, **kwargs)
+
+    @server.tool()
+    def toolbox_search(
+        query: str,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Find ready procedures that may apply to the current sub-problem."""
+        return call(ToolSeed.toolbox_search, query, context)
+
+    @server.tool()
+    def toolbox_save(
+        candidate: dict[str, Any],
+        intent: str = "",
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Submit one normalized procedure candidate for persistence."""
+        return call(ToolSeed.toolbox_save, candidate, intent, context)
+
+    @server.tool()
+    def toolbox_run(
+        capability: str,
+        args: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Deliver the guidance of a ready procedure capability."""
+        return call(ToolSeed.toolbox_run, capability, args, options)
+
+    @server.tool()
+    def toolbox_stats() -> dict[str, Any]:
+        """Read capability, search, delivery and evidence statistics."""
+        return call(ToolSeed.toolbox_stats)
+
+    return server
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="toolseed-mcp")
+    parser.add_argument(
+        "--data-dir",
+        default=None,
+        help="override TOOLSEED_DATA_DIR / ~/.toolseed",
+    )
+    args = parser.parse_args()
+    core = ToolSeed(args.data_dir) if args.data_dir else None
+    try:
+        create_server(core).run()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+
+
+if __name__ == "__main__":
+    main()

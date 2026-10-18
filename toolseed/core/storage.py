@@ -147,7 +147,10 @@ class Store:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(self.root / "toolseed.sqlite3")
+        self.db = sqlite3.connect(
+            self.root / "toolseed.sqlite3",
+            check_same_thread=False,
+        )
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA busy_timeout = 5000")

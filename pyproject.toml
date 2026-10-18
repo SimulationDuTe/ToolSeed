@@ -5,11 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "toolseed"
 version = "0.3.0"
-description = "ToolSeed P0: store, retrieve and deliver reusable agent procedures"
+description = "ToolSeed: reusable agent procedures with a local MCP server"
 requires-python = ">=3.11"
+dependencies = ["mcp>=2.3,<3"]
 
 [project.scripts]
 toolseed = "toolseed.cli:main"
+toolseed-mcp = "toolseed.mcp_server:main"
 
 [project.optional-dependencies]
 dev = ["ruff>=0.6", "mypy>=1.10"]

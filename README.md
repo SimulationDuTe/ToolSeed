@@ -287,13 +287,60 @@ python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "v
 工作区事件、权限确认、取消或可靠任务结果通道。不支持的能力返回 `False`，不模拟。
 它另外提供 `health_check()` 与 `translate_error()`，不改变 Core 的错误语义。
 
+## MCP Server
+
+官方 Model Context Protocol Python SDK（PyPI 包 `mcp`，锁定 2.3.x）提供 stdio 服务：
+
+```bash
+toolseed-mcp
+# 或
+python -m toolseed.mcp_server
+```
+
+已用官方 SDK 2.3.0 验证：服务只暴露四个工具，`Client(server)` 能列出工具并取得结构化统计。
+stdio 子进程测试在 CI 中运行；本地 DSH 沙箱禁止创建子进程管道，可设
+`TOOLSEED_SKIP_STDIO_TEST=1` 跳过该用例。缺少 SDK 时会输出可操作错误并以非零状态退出，
+不抛裸 traceback。正式安装：
+
+```bash
+pip install -e .
+```
+
+- 只暴露 `toolbox_search`、`toolbox_save`、`toolbox_run`、`toolbox_stats`；
+- 默认 stdio，不监听端口；
+- 默认使用用户级共享目录；可用 `TOOLSEED_DATA_DIR` 或 `--data-dir` 覆盖；
+- 同一进程内串行访问 SQLite，跨进程依赖 WAL/`busy_timeout`；
+- 调用失败返回 Core 的结构化错误，不把错误伪装成成功。
+
+Claude Code：
+
+```bash
+claude mcp add toolseed -- toolseed-mcp
+```
+
+Cursor `.cursor/mcp.json`：
+
+```json
+{
+  "mcpServers": {
+    "toolseed": {
+      "command": "toolseed-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+不同客户端的配置格式不同，但启动命令相同。以下为官方文档形式的接入示例；当前环境尚未安装
+SDK，因此还没有做端到端验证，实际配置请使用绝对路径并按客户端版本调整。
+
 ## 测试
 
 ```bash
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **149 项**测试，覆盖：
+当前 **153 项**测试；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -309,7 +356,10 @@ python -m unittest discover -s tests -t . -v
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
 - schema v2 迁移、共享数据目录、namespace 隔离、迁移锁与 `busy_timeout`；
 - P1 证据与观察自动失效、维护报告、去重维护决策与应用、重新验证决策闭环、能力观察、版本报告与回滚、失败诊断、修复候选、重复候选提示与统计；
-- schema 版本迁移、嵌套事务回滚、回滚/修复候选原子性、invocation 归属校验。
+- schema 版本迁移、嵌套事务回滚、回滚/修复候选原子性、invocation 归属校验；
+- MCP Server 固定四工具与结构化统计调用（官方 SDK 2.3.0 已验证）；
+- MCP stdio 子进程启动与四工具枚举（CI 验证，本地沙箱可跳过）；
+- 缺少官方 SDK 时的可操作错误与非零退出。
 
 ## 质量门禁
 
@@ -319,6 +369,7 @@ python scripts/quality_gate.py
 
 - 始终运行 `compileall` + unittest；
 - 安装了 `ruff` / `mypy` 时自动运行，否则明确显示 `SKIP`，不会伪装成通过；
+- `.github/workflows/quality.yml` 在 Linux/Windows/macOS 和 Python 3.11/3.13 上安装官方 MCP SDK 后跑全套测试；
 - 可选开发依赖：`pip install -e .[dev]`。
 
 ## 价值对照实验
@@ -361,9 +412,9 @@ python -m benchmarks.live_experiment --mode command \
 本地 SQLite 持久化、用户级共享数据目录与 namespace、schema v2 迁移、能力/版本隔离与退役、
 能力级隔离解除、版本解除与候选提升、证据有效性评估、自动失效与维护报告、维护决策、能力观察与
 观察自动失效、版本报告与受控回滚、失败诊断与修复候选、`LocalAdapter` 与 Skill、价值对照实验骨架、
-live A/B 实验框架。
+live A/B 实验框架、MCP stdio 适配层（官方 SDK 2.3.0 已验证）。
 
-尚未实现：`toolseed-mcp` / MCP stdio 服务、`executable` / `workflow`（`kind` 不是 `procedure`
+尚未实现：MCP 各客户端实际配置的端到端验证、`executable` / `workflow`（`kind` 不是 `procedure`
 时返回 `UNSUPPORTED_CAPABILITY_KIND`）、代码执行与沙箱、多文件/ZIP 能力包、向量检索或 LLM 重排、
 异步保存队列、证据成熟度状态机、多用户 RBAC、检索缓存、自动反思/自动修复、真实 LLM 或
 独立验证器参与的价值实验。
