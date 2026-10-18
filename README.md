@@ -7,16 +7,20 @@
 - 长期设计：[docs/DESIGN.md](docs/DESIGN.md)
 - 两者范围不一致时，以 P0-SLIM 为准。
 
-这是一个单进程、本地单用户的 P0 闭环，并已开始 P1：四个固定公共 API、不可变版本、内容哈希、
-关键词检索、Procedure 交付、证据分离，以及证据有效性评估、失败诊断与修复候选。它不是安全沙箱，
+这是一个本地单用户能力库，已包含 P0 闭环与部分 P1：四个固定公共 API、不可变版本、内容哈希、
+关键词检索、Procedure 交付、证据分离、证据有效性、失败诊断与修复候选。它不是安全沙箱，
 也不是完整 MVP。
+
+规划中的首发形态是一个通用 Python 包 + `toolseed-mcp` stdio 服务，让 Codex、Claude Code、
+Cursor 等 Agent 共享同一能力库；MCP 层尚未实现。
 
 ## 快速开始
 
 ```python
 from toolseed import ToolSeed
 
-box = ToolSeed(".toolseed")
+box = ToolSeed()  # 默认用户级共享目录 ~/.toolseed/，可用 TOOLSEED_DATA_DIR 覆盖
+# 或显式隔离：box = ToolSeed("./project-data")
 
 candidate = {
     "protocol_version": 1,
@@ -205,10 +209,12 @@ P1 第一块已实现：
 
 ## 存储
 
-默认数据目录 `.toolseed/`，里面是一个 SQLite 文件：
+默认数据目录是当前用户的 `~/.toolseed/`（可用 `TOOLSEED_DATA_DIR` 或显式路径覆盖），里面是一个
+SQLite 文件。这样不同 MCP 客户端可以共享同一能力库；项目隔离通过 `namespace` 完成。
+显式传入独立 `data_dir` 可做完全隔离。
 
 - `toolseed.sqlite3`
-  - `capabilities`：稳定身份、名称、当前版本指针、能力级 `archived_at` / `quarantined_at`
+  - `capabilities`：稳定身份、名称、namespace、当前版本指针、能力级 `archived_at` / `quarantined_at`
   - `capability_versions`：不可变版本、规范化 Manifest、Procedure 正文、`content_hash`、版本状态
   - `invocations`：每次 Procedure 交付记录
   - `evidence_events`：追加式事件，原始事件不被静默改写
@@ -220,6 +226,9 @@ P1 第一块已实现：
 没有 `save_jobs`、`search_index`、`audit_events` 或 `cost_observations` 表；版本正文存在数据库中，
 不写 `content/` 文件。`content_hash` 由 `protocol_version`、Manifest 和 `content` 的确定性 JSON
 （键按字典序、无多余空白）计算 SHA-256，格式为 `sha256:...`。
+
+Schema 使用 `PRAGMA user_version` 迁移，当前为 v2（新增 `capabilities.namespace`）；启动时通过
+跨进程迁移锁串行化，SQLite 启用 WAL 与 `busy_timeout`，以支持多个 MCP 进程共享同一用户目录。
 
 ## 管理操作与 CLI
 
@@ -284,7 +293,7 @@ python -m toolseed record-outcome '{"capability_id": "cap_xxx", "version_id": "v
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **143 项**测试，覆盖：
+当前 **149 项**测试，覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -298,6 +307,7 @@ python -m unittest discover -s tests -t . -v
 - CLI 的 save/run/record-outcome/stats/archive/release/release-version/promote-version/quarantine；
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
+- schema v2 迁移、共享数据目录、namespace 隔离、迁移锁与 `busy_timeout`；
 - P1 证据与观察自动失效、维护报告、去重维护决策与应用、重新验证决策闭环、能力观察、版本报告与回滚、失败诊断、修复候选、重复候选提示与统计；
 - schema 版本迁移、嵌套事务回滚、回滚/修复候选原子性、invocation 归属校验。
 
@@ -348,11 +358,12 @@ python -m benchmarks.live_experiment --mode command \
 
 已实现（P0 + P1 第一块）：四个固定 API、Capability/Version/Invocation/Evidence 模型、不可变版本与
 内容哈希、唯一 `procedure` 表示、Manifest 校验、关键词检索与硬筛选、Procedure 交付、
-本地 SQLite 持久化、能力/版本隔离与退役、能力级隔离解除、版本解除与候选提升、证据有效性评估、
-自动失效与维护报告、维护决策、能力观察与观察自动失效、版本报告与受控回滚、失败诊断与修复候选、`LocalAdapter`
-与 Skill、价值对照实验骨架、live A/B 实验框架。
+本地 SQLite 持久化、用户级共享数据目录与 namespace、schema v2 迁移、能力/版本隔离与退役、
+能力级隔离解除、版本解除与候选提升、证据有效性评估、自动失效与维护报告、维护决策、能力观察与
+观察自动失效、版本报告与受控回滚、失败诊断与修复候选、`LocalAdapter` 与 Skill、价值对照实验骨架、
+live A/B 实验框架。
 
-尚未实现：`executable` / `workflow`（`kind` 不是 `procedure` 时返回
-`UNSUPPORTED_CAPABILITY_KIND`）、代码执行与沙箱、多文件/ZIP 能力包、向量检索或 LLM 重排、
+尚未实现：`toolseed-mcp` / MCP stdio 服务、`executable` / `workflow`（`kind` 不是 `procedure`
+时返回 `UNSUPPORTED_CAPABILITY_KIND`）、代码执行与沙箱、多文件/ZIP 能力包、向量检索或 LLM 重排、
 异步保存队列、证据成熟度状态机、多用户 RBAC、检索缓存、自动反思/自动修复、真实 LLM 或
 独立验证器参与的价值实验。

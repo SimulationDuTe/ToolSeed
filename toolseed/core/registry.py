@@ -34,12 +34,13 @@ class Registry:
         self.store = store
 
     # -- capability -------------------------------------------------------
-    def create_capability(self, name: str) -> str:
+    def create_capability(self, name: str, namespace: str = "global") -> str:
         capability_id = new_id("cap")
         with self.store.transaction() as db:
             db.execute(
-                "INSERT INTO capabilities (capability_id, name, created_at) VALUES (?, ?, ?)",
-                (capability_id, name, now()),
+                "INSERT INTO capabilities (capability_id, name, namespace, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (capability_id, name, namespace, now()),
             )
         return capability_id
 
@@ -48,21 +49,32 @@ class Registry:
             "SELECT * FROM capabilities WHERE capability_id = ?", (capability_id,)
         ).fetchone()
 
-    def find_by_name(self, name: str) -> list[sqlite3.Row]:
-        return list(
-            self.store.db.execute(
-                "SELECT * FROM capabilities WHERE name = ? ORDER BY created_at", (name,)
-            ).fetchall()
-        )
+    def find_by_name(
+        self,
+        name: str,
+        namespaces: tuple[str, ...] | None = None,
+    ) -> list[sqlite3.Row]:
+        query = "SELECT * FROM capabilities WHERE name = ?"
+        params: list[Any] = [name]
+        if namespaces is not None:
+            placeholders = ", ".join("?" for _ in namespaces)
+            query += f" AND namespace IN ({placeholders})"
+            params.extend(namespaces)
+        query += " ORDER BY created_at"
+        return list(self.store.db.execute(query, params).fetchall())
 
-    def resolve(self, reference: Any) -> tuple[sqlite3.Row | None, str | None]:
+    def resolve(
+        self,
+        reference: Any,
+        namespaces: tuple[str, ...] | None = None,
+    ) -> tuple[sqlite3.Row | None, str | None]:
         """Resolve a capability id or an unambiguous name."""
         if not isinstance(reference, str) or not reference.strip():
             return None, INVALID_ARGUMENT
         row = self.get_capability(reference)
         if row is not None:
             return row, None
-        matches = self.find_by_name(reference)
+        matches = self.find_by_name(reference, namespaces)
         if not matches:
             return None, CAPABILITY_NOT_FOUND
         if len(matches) > 1:
@@ -150,6 +162,7 @@ class Registry:
         *,
         status: str,
         origin: str,
+        namespace: str = "global",
     ) -> tuple[sqlite3.Row, sqlite3.Row]:
         """Create a capability and its first version in one transaction."""
         capability_id = new_id("cap")
@@ -157,8 +170,9 @@ class Registry:
         stamp = now()
         with self.store.transaction() as db:
             db.execute(
-                "INSERT INTO capabilities (capability_id, name, created_at) VALUES (?, ?, ?)",
-                (capability_id, name, stamp),
+                "INSERT INTO capabilities (capability_id, name, namespace, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (capability_id, name, namespace, stamp),
             )
             db.execute(
                 "INSERT INTO capability_versions (version_id, capability_id, version_number, "
@@ -226,13 +240,14 @@ class Registry:
         ).fetchone()
 
     def find_capability_by_name_and_hash(
-        self, name: str, digest: str
+        self, name: str, digest: str, namespace: str = "global"
     ) -> tuple[sqlite3.Row | None, sqlite3.Row | None]:
         row = self.store.db.execute(
             "SELECT c.*, v.version_id AS matched_version_id "
             "FROM capabilities c JOIN capability_versions v ON v.capability_id = c.capability_id "
-            "WHERE c.name = ? AND v.content_hash = ? ORDER BY c.created_at LIMIT 1",
-            (name, digest),
+            "WHERE c.name = ? AND c.namespace = ? AND v.content_hash = ? "
+            "ORDER BY c.created_at LIMIT 1",
+            (name, namespace, digest),
         ).fetchone()
         if row is None:
             return None, None
@@ -341,13 +356,22 @@ class Registry:
         return version
 
     # -- queries ----------------------------------------------------------
-    def deliverable_capabilities(self) -> list[tuple[sqlite3.Row, sqlite3.Row]]:
+    def deliverable_capabilities(
+        self,
+        namespaces: tuple[str, ...] | None = None,
+    ) -> list[tuple[sqlite3.Row, sqlite3.Row]]:
         """Capabilities whose current version is ready and which are not retired/isolated."""
-        rows = self.store.db.execute(
+        query = (
             "SELECT c.capability_id AS c_id, v.version_id AS v_id "
             "FROM capabilities c JOIN capability_versions v ON v.version_id = c.current_version_id "
             "WHERE c.archived_at IS NULL AND c.quarantined_at IS NULL AND v.status = 'ready'"
-        ).fetchall()
+        )
+        params: list[Any] = []
+        if namespaces is not None:
+            placeholders = ", ".join("?" for _ in namespaces)
+            query += f" AND c.namespace IN ({placeholders})"
+            params.extend(namespaces)
+        rows = self.store.db.execute(query, params).fetchall()
         result = []
         for row in rows:
             capability = self.get_capability(row["c_id"])

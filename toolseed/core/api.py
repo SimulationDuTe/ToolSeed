@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from pathlib import Path
 from typing import Any
 
 from .errors import (
@@ -44,7 +45,7 @@ from .evidence import (
 from .manifest import CandidateError, content_hash, normalize_candidate, scan_content
 from .registry import STATUS_CANDIDATE, STATUS_QUARANTINED, STATUS_READY, Registry
 from .search import DEFAULT_RESULTS, MAX_RESULTS, Search, tokens
-from .storage import Store
+from .storage import Store, default_data_dir
 
 
 class _CandidateRejected(Exception):
@@ -70,7 +71,7 @@ class ToolSeed:
 
     def __init__(
         self,
-        data_dir: str = ".toolseed",
+        data_dir: str | Path | None = None,
         *,
         max_results: int = DEFAULT_RESULTS,
     ) -> None:
@@ -80,12 +81,25 @@ class ToolSeed:
             or not 1 <= max_results <= MAX_RESULTS
         ):
             raise ValueError(f"max_results must be an integer from 1 to {MAX_RESULTS}")
-        self.store = Store(data_dir)
+        self.store = Store(data_dir if data_dir is not None else default_data_dir())
         self.registry = Registry(self.store)
         self.evidence = Evidence(self.store)
         self.search_engine = Search(
             self.store, self.registry, max_results=max_results
         )
+
+    @staticmethod
+    def _context_namespace(context: dict[str, Any] | None) -> str:
+        if not context:
+            return "global"
+        value = context.get("namespace") or context.get("workspace")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return "global"
+
+    @staticmethod
+    def _namespace_scope(namespace: str) -> tuple[str, ...]:
+        return ("global",) if namespace == "global" else ("global", namespace)
 
     @classmethod
     def _origin_summary(cls, intent: str, context: dict[str, Any] | None) -> str:
@@ -121,6 +135,7 @@ class ToolSeed:
         self,
         manifest: dict[str, Any],
         exclude_capability_id: str,
+        namespace: str,
     ) -> list[dict[str, Any]]:
         """Deterministic similarity hints; never merges or blocks a save."""
         target_tokens = tokens(manifest["name"])
@@ -134,11 +149,11 @@ class ToolSeed:
             "SELECT c.capability_id, v.manifest_json "
             "FROM capabilities c JOIN capability_versions v "
             "  ON v.capability_id = c.capability_id "
-            "WHERE c.capability_id != ? "
+            "WHERE c.capability_id != ? AND c.namespace = ? "
             "  AND v.version_number = ("
             "    SELECT MAX(v2.version_number) FROM capability_versions v2 "
             "    WHERE v2.capability_id = c.capability_id)",
-            (exclude_capability_id,),
+            (exclude_capability_id, namespace),
         ).fetchall()
 
         hints: list[dict[str, Any]] = []
@@ -245,12 +260,14 @@ class ToolSeed:
 
         target_id = normalized.get("target_capability_id")
         target_capability = None
+        namespace = self._context_namespace(context)
         if target_id is not None:
             target_capability = self.registry.get_capability(target_id)
             if target_capability is None:
                 return error_response(CAPABILITY_NOT_FOUND, "target_capability_id does not exist")
             if target_capability["archived_at"]:
                 return error_response(CAPABILITY_ARCHIVED, "target capability is archived")
+            namespace = target_capability["namespace"]
             existing = self.registry.find_version_by_hash(target_id, digest)
             if existing is not None:
                 self.evidence.record(
@@ -265,7 +282,7 @@ class ToolSeed:
                 }
         else:
             existing_capability, existing_version = self.registry.find_capability_by_name_and_hash(
-                manifest["name"], digest
+                manifest["name"], digest, namespace
             )
             if existing_capability is not None and existing_version is not None:
                 self.evidence.record(
@@ -291,7 +308,13 @@ class ToolSeed:
             )
         else:
             capability, version = self.registry.create_with_version(
-                manifest["name"], manifest, content, digest, status=status, origin=origin
+                manifest["name"],
+                manifest,
+                content,
+                digest,
+                status=status,
+                origin=origin,
+                namespace=namespace,
             )
 
         self.evidence.record(
@@ -302,7 +325,7 @@ class ToolSeed:
         )
         response = self._accepted(capability, version, duplicate=False)
         response["possible_duplicates"] = self._possible_duplicates(
-            manifest, capability["capability_id"]
+            manifest, capability["capability_id"], capability["namespace"]
         )
         if verdict == "review":
             response["notes"] = reasons
@@ -314,7 +337,8 @@ class ToolSeed:
         if options is not None and not isinstance(options, dict):
             return error_response(INVALID_ARGUMENT, "options must be an object")
 
-        row, code = self.registry.resolve(capability)
+        namespaces = self._namespace_scope(self._context_namespace(options))
+        row, code = self.registry.resolve(capability, namespaces)
         if code is not None:
             return error_response(code, self._resolve_message(code))
         assert row is not None
@@ -1418,6 +1442,7 @@ class ToolSeed:
         return {
             "status": "accepted",
             "capability_id": capability["capability_id"],
+            "namespace": capability["namespace"],
             "version_id": version["version_id"],
             "version": version["version_number"],
             "version_status": version["status"],

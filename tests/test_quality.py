@@ -13,10 +13,37 @@ class StorageQualityTest(CoreTest):
     case = "quality-storage"
 
     def test_schema_version_is_recorded_and_reopen_is_idempotent(self) -> None:
-        self.assertEqual(self.core.store.schema_version, 1)
+        self.assertEqual(self.core.store.schema_version, 2)
         self.core.close()
         self.core = ToolSeed(str(self.dir))
-        self.assertEqual(self.core.store.schema_version, 1)
+        self.assertEqual(self.core.store.schema_version, 2)
+
+    def test_busy_timeout_and_legacy_v1_migration(self) -> None:
+        timeout = self.core.store.db.execute("PRAGMA busy_timeout").fetchone()[0]
+        self.assertGreaterEqual(timeout, 1000)
+
+        legacy = self.dir / "legacy-v1"
+        legacy.mkdir(parents=True, exist_ok=True)
+        db = sqlite3.connect(legacy / "toolseed.sqlite3")
+        db.execute(
+            "CREATE TABLE capabilities ("
+            "capability_id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL,"
+            "current_version_id TEXT, archived_at TEXT, quarantined_at TEXT)"
+        )
+        db.execute("PRAGMA user_version = 1")
+        db.commit()
+        db.close()
+
+        migrated = ToolSeed(str(legacy))
+        try:
+            self.assertEqual(migrated.store.schema_version, 2)
+            columns = {
+                row["name"]
+                for row in migrated.store.db.execute("PRAGMA table_info(capabilities)")
+            }
+            self.assertIn("namespace", columns)
+        finally:
+            migrated.close()
 
     def test_nested_transaction_rolls_back_all_writes(self) -> None:
         with self.assertRaises(RuntimeError):

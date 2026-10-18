@@ -2,9 +2,20 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import sqlite3
+import time
 from pathlib import Path
 from typing import Iterator
+
+
+def default_data_dir() -> Path:
+    """User-level shared data directory; explicit value can override."""
+    override = os.environ.get("TOOLSEED_DATA_DIR")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".toolseed"
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS capabilities (
@@ -121,8 +132,14 @@ CREATE INDEX IF NOT EXISTS idx_observations_capability
   ON capability_observations(capability_id, created_at);
 """
 
+MIGRATION_2 = """
+ALTER TABLE capabilities ADD COLUMN namespace TEXT NOT NULL DEFAULT 'global';
+CREATE INDEX IF NOT EXISTS idx_capabilities_namespace ON capabilities(namespace, name);
+"""
+
 MIGRATIONS: dict[int, str] = {
     1: SCHEMA,
+    2: MIGRATION_2,
 }
 
 
@@ -133,17 +150,46 @@ class Store:
         self.db = sqlite3.connect(self.root / "toolseed.sqlite3")
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA busy_timeout = 5000")
         self._tx_depth = 0
         self._migrate()
 
+    @contextlib.contextmanager
+    def _migration_lock(self) -> Iterator[None]:
+        lock_path = self.root / ".migrate.lock"
+        deadline = time.time() + 30
+        while True:
+            try:
+                fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(fd, str(os.getpid()).encode("ascii"))
+                os.close(fd)
+                break
+            except FileExistsError:
+                try:
+                    if time.time() - lock_path.stat().st_mtime > 60:
+                        lock_path.unlink()
+                except OSError:
+                    pass
+                if time.time() > deadline:
+                    raise TimeoutError("timed out waiting for schema migration lock")
+                time.sleep(0.05)
+        try:
+            yield
+        finally:
+            try:
+                lock_path.unlink()
+            except OSError:
+                pass
+
     def _migrate(self) -> None:
-        current = int(self.db.execute("PRAGMA user_version").fetchone()[0])
-        for version in sorted(MIGRATIONS):
-            if version <= current:
-                continue
-            self.db.executescript(MIGRATIONS[version])
-            self.db.execute(f"PRAGMA user_version = {version}")
-        self.db.commit()
+        with self._migration_lock():
+            current = int(self.db.execute("PRAGMA user_version").fetchone()[0])
+            for version in sorted(MIGRATIONS):
+                if version <= current:
+                    continue
+                self.db.executescript(MIGRATIONS[version])
+                self.db.execute(f"PRAGMA user_version = {version}")
+            self.db.commit()
 
     @property
     def schema_version(self) -> int:

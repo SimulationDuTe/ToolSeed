@@ -61,6 +61,7 @@ class Search:
         if context is not None and not isinstance(context, dict):
             return error_response(INVALID_ARGUMENT, "context must be an object")
         context = context or {}
+        namespaces = self._namespaces(context)
 
         direct = self._direct_lookup(query.strip())
         if direct is not None:
@@ -68,7 +69,7 @@ class Search:
 
         wanted = tokens(query)
         scored: list[tuple[float, Any, Any]] = []
-        for capability, version in self.registry.deliverable_capabilities():
+        for capability, version in self.registry.deliverable_capabilities(namespaces):
             manifest = json.loads(version["manifest_json"])
             if not self._applicability_compatible(manifest, context):
                 continue
@@ -86,6 +87,14 @@ class Search:
         }
 
     # -- internals --------------------------------------------------------
+    @staticmethod
+    def _namespaces(context: dict[str, Any]) -> tuple[str, ...]:
+        current = context.get("namespace") or context.get("workspace")
+        if isinstance(current, str) and current.strip():
+            namespace = current.strip()
+            return ("global",) if namespace == "global" else ("global", namespace)
+        return ("global",)
+
     def _direct_lookup(self, text: str) -> tuple[Any, Any] | None:
         capability = self.registry.get_capability(text)
         if capability is None:
@@ -130,6 +139,7 @@ class Search:
             "capability_id": capability["capability_id"],
             "version_id": version["version_id"],
             "version": version["version_number"],
+            "namespace": capability["namespace"],
             "name": manifest["name"],
             "kind": manifest["kind"],
             "description": manifest["description"],

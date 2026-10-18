@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         ],
     )
     parser.add_argument("payload", nargs="?", default=None, help="JSON object; omitted reads stdin")
-    parser.add_argument("--data-dir", default=".toolseed")
+    parser.add_argument("--data-dir", default=None)
     namespace = parser.parse_args(argv)
 
     raw = namespace.payload
