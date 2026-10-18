@@ -220,10 +220,60 @@ class ToolSeed:
                     context,
                     force_candidate=force_candidate,
                 )
+        except sqlite3.IntegrityError:
+            duplicate = self._duplicate_from_conflict(candidate, context)
+            if duplicate is not None:
+                return duplicate
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "candidate could not be durably persisted"
+            )
         except (sqlite3.Error, OSError):
             return error_response(
                 SAVE_PERSISTENCE_FAILED, "candidate could not be durably persisted"
             )
+
+    def _duplicate_from_conflict(
+        self,
+        candidate: Any,
+        context: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        try:
+            normalized = normalize_candidate(candidate)
+        except CandidateError:
+            return None
+        manifest = normalized["manifest"]
+        digest = content_hash(
+            normalized["protocol_version"], manifest, normalized["content"]
+        )
+        target_id = normalized.get("target_capability_id")
+        namespace = self._context_namespace(context)
+        if target_id is not None:
+            capability = self.registry.get_capability(target_id)
+            if capability is None:
+                return None
+            namespace = capability["namespace"]
+            version = self.registry.find_version_by_hash(target_id, digest)
+            if version is None:
+                return None
+        else:
+            capability, version = self.registry.find_by_identity(
+                namespace, manifest["name"], digest
+            )
+            if capability is None or version is None:
+                return None
+        try:
+            self.evidence.record(
+                EVENT_DUPLICATE,
+                capability_id=capability["capability_id"],
+                version_id=version["version_id"],
+                quantity=1,
+            )
+        except (sqlite3.Error, OSError):
+            pass
+        return {
+            **self._accepted(capability, version, duplicate=True),
+            "possible_duplicates": [],
+        }
 
     def _save_candidate_impl(
         self,

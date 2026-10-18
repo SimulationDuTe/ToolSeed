@@ -129,15 +129,20 @@ class Registry:
     ) -> sqlite3.Row:
         version_id = new_id("ver")
         number = self.next_version_number(capability_id)
+        capability = self.get_capability(capability_id)
+        if capability is None:
+            raise KeyError(capability_id)
         with self.store.transaction() as db:
             db.execute(
                 "INSERT INTO capability_versions (version_id, capability_id, version_number, "
-                "manifest_json, content, content_hash, status, origin, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "namespace, name, manifest_json, content, content_hash, status, origin, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     version_id,
                     capability_id,
                     number,
+                    capability["namespace"],
+                    capability["name"],
                     json.dumps(manifest, ensure_ascii=False, sort_keys=True),
                     content,
                     digest,
@@ -176,11 +181,13 @@ class Registry:
             )
             db.execute(
                 "INSERT INTO capability_versions (version_id, capability_id, version_number, "
-                "manifest_json, content, content_hash, status, origin, created_at) "
-                "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?)",
+                "namespace, name, manifest_json, content, content_hash, status, origin, created_at) "
+                "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     version_id,
                     capability_id,
+                    namespace,
+                    name,
                     json.dumps(manifest, ensure_ascii=False, sort_keys=True),
                     content,
                     digest,
@@ -252,6 +259,25 @@ class Registry:
         if row is None:
             return None, None
         return self.get_capability(row["capability_id"]), self.get_version(row["matched_version_id"])
+
+    def find_by_identity(
+        self,
+        namespace: str,
+        name: str,
+        digest: str,
+    ) -> tuple[sqlite3.Row | None, sqlite3.Row | None]:
+        row = self.store.db.execute(
+            "SELECT c.*, v.version_id AS matched_version_id "
+            "FROM capabilities c JOIN capability_versions v ON v.capability_id = c.capability_id "
+            "WHERE v.namespace = ? AND v.name = ? AND v.content_hash = ? "
+            "ORDER BY c.created_at LIMIT 1",
+            (namespace, name, digest),
+        ).fetchone()
+        if row is None:
+            return None, None
+        return self.get_capability(row["capability_id"]), self.get_version(
+            row["matched_version_id"]
+        )
 
     def quarantine_version(self, version_id: str) -> sqlite3.Row | None:
         """Mark a version quarantined and keep the current pointer ready if possible.

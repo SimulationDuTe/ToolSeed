@@ -227,8 +227,12 @@ SQLite 文件。这样不同 MCP 客户端可以共享同一能力库；项目�
 不写 `content/` 文件。`content_hash` 由 `protocol_version`、Manifest 和 `content` 的确定性 JSON
 （键按字典序、无多余空白）计算 SHA-256，格式为 `sha256:...`。
 
-Schema 使用 `PRAGMA user_version` 迁移，当前为 v2（新增 `capabilities.namespace`）；启动时通过
-跨进程迁移锁串行化，SQLite 启用 WAL 与 `busy_timeout`，以支持多个 MCP 进程共享同一用户目录。
+Schema 使用 `PRAGMA user_version` 迁移，当前为 v3：
+
+- v2 增加 `capabilities.namespace`；
+- v3 在版本上记录 `namespace` / `name`，并建立 `(namespace, name, content_hash)` 唯一索引，
+  防止并发保存产生重复能力；
+- 启动时通过跨进程迁移锁串行化，SQLite 启用 WAL 与 `busy_timeout`，支持多个 MCP 进程共享目录。
 
 ## 管理操作与 CLI
 
@@ -340,7 +344,7 @@ SDK，因此还没有做端到端验证，实际配置请使用绝对路径并�
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **153 项**测试；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
+当前 **154 项**测试；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
@@ -354,7 +358,8 @@ python -m unittest discover -s tests -t . -v
 - CLI 的 save/run/record-outcome/stats/archive/release/release-version/promote-version/quarantine；
 - 价值实验骨架的采用率、计数与任务结果记录；
 - live A/B harness 的任务验证器、条件隔离、JSONL 记录、外部命令执行与配对聚合；
-- schema v2 迁移、共享数据目录、namespace 隔离、迁移锁与 `busy_timeout`；
+- schema v2/v3 迁移、共享数据目录、namespace 隔离、迁移锁与 `busy_timeout`；
+- 两个连接并发保存同一候选时只生成一个能力/版本（唯一身份索引兜底）；
 - P1 证据与观察自动失效、维护报告、去重维护决策与应用、重新验证决策闭环、能力观察、版本报告与回滚、失败诊断、修复候选、重复候选提示与统计；
 - schema 版本迁移、嵌套事务回滚、回滚/修复候选原子性、invocation 归属校验；
 - MCP Server 固定四工具与结构化统计调用（官方 SDK 2.3.0 已验证）；
@@ -409,7 +414,7 @@ python -m benchmarks.live_experiment --mode command \
 
 已实现（P0 + P1 第一块）：四个固定 API、Capability/Version/Invocation/Evidence 模型、不可变版本与
 内容哈希、唯一 `procedure` 表示、Manifest 校验、关键词检索与硬筛选、Procedure 交付、
-本地 SQLite 持久化、用户级共享数据目录与 namespace、schema v2 迁移、能力/版本隔离与退役、
+本地 SQLite 持久化、用户级共享数据目录与 namespace、schema v3 迁移、并发保存唯一身份约束、能力/版本隔离与退役、
 能力级隔离解除、版本解除与候选提升、证据有效性评估、自动失效与维护报告、维护决策、能力观察与
 观察自动失效、版本报告与受控回滚、失败诊断与修复候选、`LocalAdapter` 与 Skill、价值对照实验骨架、
 live A/B 实验框架、MCP stdio 适配层（官方 SDK 2.3.0 已验证）。

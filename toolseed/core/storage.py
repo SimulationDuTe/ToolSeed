@@ -137,9 +137,26 @@ ALTER TABLE capabilities ADD COLUMN namespace TEXT NOT NULL DEFAULT 'global';
 CREATE INDEX IF NOT EXISTS idx_capabilities_namespace ON capabilities(namespace, name);
 """
 
+MIGRATION_3 = """
+ALTER TABLE capability_versions ADD COLUMN namespace TEXT NOT NULL DEFAULT 'global';
+ALTER TABLE capability_versions ADD COLUMN name TEXT NOT NULL DEFAULT '';
+UPDATE capability_versions
+SET namespace = COALESCE(
+      (SELECT c.namespace FROM capabilities c
+       WHERE c.capability_id = capability_versions.capability_id),
+      'global'),
+    name = COALESCE(
+      (SELECT c.name FROM capabilities c
+       WHERE c.capability_id = capability_versions.capability_id),
+      '');
+CREATE UNIQUE INDEX IF NOT EXISTS idx_versions_identity
+  ON capability_versions(namespace, name, content_hash);
+"""
+
 MIGRATIONS: dict[int, str] = {
     1: SCHEMA,
     2: MIGRATION_2,
+    3: MIGRATION_3,
 }
 
 
