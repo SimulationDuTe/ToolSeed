@@ -1124,17 +1124,23 @@ class ToolSeed:
             return error_response(INVALID_ARGUMENT, "decision_id must be a string")
         if resolution is not None and not isinstance(resolution, str):
             return error_response(INVALID_ARGUMENT, "resolution must be a string")
-        decision = self.evidence.get_decision(decision_id)
-        if decision is None:
-            return error_response(INVALID_ARGUMENT, "decision_id does not exist")
-        if decision["status"] == "dismissed":
-            return {"ok": True, "decision": decision, "dismissed": False}
-        self.evidence.dismiss_decision(decision_id, resolution)
-        return {
-            "ok": True,
-            "decision": self.evidence.get_decision(decision_id),
-            "dismissed": True,
-        }
+        try:
+            with self.store.transaction(immediate=True):
+                decision = self.evidence.get_decision(decision_id)
+                if decision is None:
+                    return error_response(INVALID_ARGUMENT, "decision_id does not exist")
+                if decision["status"] == "dismissed":
+                    return {"ok": True, "decision": decision, "dismissed": False}
+                self.evidence.dismiss_decision(decision_id, resolution)
+                return {
+                    "ok": True,
+                    "decision": self.evidence.get_decision(decision_id),
+                    "dismissed": True,
+                }
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "decision dismissal could not be durably recorded"
+            )
 
     def record_observation(
         self,
@@ -1261,6 +1267,27 @@ class ToolSeed:
             return error_response(INVALID_ARGUMENT, "decision_id must be a string")
         if resolution is not None and not isinstance(resolution, str):
             return error_response(INVALID_ARGUMENT, "resolution must be a string")
+        try:
+            # Acquire the writer slot before reading state or validity. Other connections
+            # cannot commit an invalidation/dismissal between this check and its UPDATE.
+            with self.store.transaction(immediate=True):
+                result = self._apply_evolution_decision(decision_id, resolution)
+                if not result.get("ok"):
+                    # Inner management helpers may translate a write error into a result.
+                    # Do not commit their partial side effects just because it was caught.
+                    raise _CandidateRejected(result)
+                return result
+        except _CandidateRejected as exc:
+            return exc.response
+        except (sqlite3.Error, OSError):
+            return error_response(
+                SAVE_PERSISTENCE_FAILED, "decision application could not be durably recorded"
+            )
+
+    def _apply_evolution_decision(
+        self, decision_id: str, resolution: str | None,
+    ) -> dict[str, Any]:
+        """Decision checks and effects; called with the outer IMMEDIATE transaction held."""
         decision = self.evidence.get_decision(decision_id)
         if decision is None:
             return error_response(INVALID_ARGUMENT, "decision_id does not exist")

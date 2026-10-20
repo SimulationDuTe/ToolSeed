@@ -320,7 +320,13 @@ class Store:
         else:
             self._tx_depth -= 1
             if outer:
-                self.db.commit()
+                try:
+                    self.db.commit()
+                except BaseException:
+                    # COMMIT failures can leave a live transaction. Never let a later
+                    # unrelated operation accidentally commit these failed writes.
+                    self.db.rollback()
+                    raise
 
     def close(self) -> None:
         self.db.close()
