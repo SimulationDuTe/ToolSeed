@@ -83,6 +83,21 @@ class PromotionContractTest(CoreTest):
         result = self.core.promote_version(second["version_id"], "promote")
         self.assertEqual(result["error"]["reason_code"], "VERIFICATION_EVIDENCE_INVALID")
 
+    def test_backwards_clock_does_not_unmask_a_stale_verification(self) -> None:
+        """The projection is the newest assessment recorded, not the newest stamp."""
+        _, second = self._revision()
+        verified = verify_version(self.core, second)
+        stale = self.core.assess_evidence(verified["event_id"], "stale", "evidence_expired")
+        self.core.store.db.execute(
+            "UPDATE evidence_validity_assessments SET assessed_at = ? WHERE assessment_id = ?",
+            ("2000-01-01T00:00:00+00:00", stale["assessment"]["assessment_id"]),
+        )
+        self.core.store.db.commit()
+        # The stale report carries the older stamp, but it was recorded last.
+        self.assertEqual(self.core.evidence.latest_validity(verified["event_id"]), "stale")
+        result = self.core.promote_version(second["version_id"], "promote")
+        self.assertEqual(result["error"]["reason_code"], "VERIFICATION_EVIDENCE_INVALID")
+
     def test_agent_source_does_not_satisfy_promotion(self) -> None:
         _, second = self._revision()
         verify_version(self.core, second, source_type="agent")
@@ -134,15 +149,121 @@ class PromotionContractTest(CoreTest):
         ).fetchone()["n"]
         self.assertEqual(count, 1)
 
-    def test_verification_before_candidate_is_rejected_at_promotion(self) -> None:
-        _, second = self._revision()
+    def test_equal_timestamps_do_not_block_promotion(self) -> None:
+        """A clock that cannot resolve the gap must not invalidate bound evidence."""
+        first, second = self._revision()
         verified = verify_version(self.core, second)
         version = self.core.registry.get_version(second["version_id"])
+        # Reproduce the collision a coarse clock produces: the verification event
+        # ends up carrying exactly the same created_at as the candidate it verifies.
         self.core.store.db.execute(
             "UPDATE evidence_events SET created_at = ? WHERE event_id = ?",
             (version["created_at"], verified["event_id"]),
         )
         self.core.store.db.commit()
+        stored = self.core.store.db.execute(
+            "SELECT created_at FROM evidence_events WHERE event_id = ?",
+            (verified["event_id"],),
+        ).fetchone()
+        self.assertEqual(stored["created_at"], version["created_at"])
+
+        promoted = self.core.promote_version(second["version_id"], "promote")
+        self.assertTrue(promoted["promoted"], promoted)
+        self.assertEqual(self.core.registry.get_version(second["version_id"])["status"], "ready")
+        capability = self.core.registry.get_capability(first["capability_id"])
+        self.assertEqual(capability["current_version_id"], second["version_id"])
+
+    def test_promotion_does_not_consult_the_wall_clock(self) -> None:
+        """Order comes from the write path, so created_at magnitude decides nothing."""
+        _, second = self._revision()
+        verified = verify_version(self.core, second)
+        self.core.store.db.execute(
+            "UPDATE evidence_events SET created_at = ? WHERE event_id = ?",
+            ("2000-01-01T00:00:00+00:00", verified["event_id"]),
+        )
+        self.core.store.db.commit()
+        promoted = self.core.promote_version(second["version_id"], "promote")
+        self.assertTrue(promoted["promoted"], promoted)
+
+    def test_verification_cannot_be_recorded_for_a_missing_version(self) -> None:
+        """The write path is what makes 'verification after candidate' structural."""
+        _, second = self._revision()
+        result = self.core.record_version_verification(
+            version_id="ver_missing",
+            content_hash=second["content_hash"],
+            outcome="passed",
+            source_type="test_runner",
+            verification_ref="missing-version",
+            verification={
+                "method": "pytest",
+                "input_ref": "case",
+                "artifact_ref": "artifact",
+                "case_ids": ["case"],
+            },
+        )
+        self.assertEqual(result["error"]["code"], "CAPABILITY_NOT_FOUND")
+        stored = self.core.store.db.execute(
+            "SELECT COUNT(*) AS n FROM evidence_events WHERE event_type = 'version_verification'"
+        ).fetchone()["n"]
+        self.assertEqual(stored, 0)
+
+    def test_verification_cannot_be_recorded_for_a_non_candidate_version(self) -> None:
+        """A version must exist as a candidate before evidence can bind to it."""
+        first = self.save()
+        self.assertEqual(first["version_status"], "ready")
+        result = self.core.record_version_verification(
+            version_id=first["version_id"],
+            content_hash=first["content_hash"],
+            outcome="passed",
+            source_type="test_runner",
+            verification_ref="non-candidate",
+            verification={
+                "method": "pytest",
+                "input_ref": "case",
+                "artifact_ref": "artifact",
+                "case_ids": ["case"],
+            },
+        )
+        self.assertEqual(result["error"]["code"], "INVALID_ARGUMENT")
+        self.assertEqual(result["error"]["reason_code"], "VERSION_NOT_CANDIDATE")
+
+    def test_verification_of_an_earlier_version_does_not_carry_over(self) -> None:
+        """Evidence stays bound to its own version and never satisfies a later one."""
+        first, second = self._revision()
+        verify_version(self.core, second)
+        self.assertTrue(self.core.promote_version(second["version_id"], "verified")["promoted"])
+        third = self.core.toolbox_save(
+            candidate(
+                content=CONTENT + "\n5. third revision.\n",
+                target_capability_id=first["capability_id"],
+            ),
+            "third revision",
+        )
+        result = self.core.promote_version(third["version_id"], "promote")
+        self.assertEqual(result["error"]["reason_code"], "VERIFICATION_EVIDENCE_MISSING")
+        self.assertEqual(self.core.registry.get_version(third["version_id"])["status"], "candidate")
+
+    def test_tampered_content_hash_is_rejected_at_promotion(self) -> None:
+        """The promotion-time hash binding still rejects mismatched evidence."""
+        _, second = self._revision()
+        verified = verify_version(self.core, second)
+        self.core.store.db.execute(
+            "UPDATE evidence_events SET content_hash = ? WHERE event_id = ?",
+            ("sha256:" + "1" * 64, verified["event_id"]),
+        )
+        self.core.store.db.commit()
+        result = self.core.promote_version(second["version_id"], "promote")
+        self.assertEqual(result["error"]["reason_code"], "CONTENT_HASH_MISMATCH")
+
+    def test_superseded_verification_blocks_promotion(self) -> None:
+        _, second = self._revision()
+        verified = verify_version(self.core, second)
+        self.core.assess_evidence(
+            verified["event_id"],
+            "superseded",
+            "evidence_superseded",
+            superseded_by="ev_newer",
+        )
         result = self.core.promote_version(second["version_id"], "promote")
         self.assertEqual(result["error"]["reason_code"], "VERIFICATION_EVIDENCE_INVALID")
 

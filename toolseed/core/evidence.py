@@ -53,6 +53,15 @@ EVENT_VERSION_VERIFICATION = "version_verification"
 REVALIDATION_EVENT_TYPES = (EVENT_DELIVERED, EVENT_TASK_OUTCOME, EVENT_VERSION_VERIFICATION)
 EVENT_DUPLICATE = "duplicate_save"
 
+ACTION_REVALIDATE_EVIDENCE = "revalidate_evidence"
+# A revalidate_evidence decision freezes this key to the assessment-table offset it
+# was created at. Revalidation freshness is then an offset comparison inside the one
+# `evidence_validity_assessments` table -- where rowid is monotonic -- instead of a
+# wall-clock comparison between two different tables.
+ASSESSMENT_WATERMARK_KEY = "assessment_watermark"
+REVALIDATION_GENERATION_KEY = "revalidation_generation"
+EVENT_DEDUP_BASELINE = "maintenance_dedup_baseline"
+
 
 def make_signal_key(payload: dict[str, Any]) -> str:
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -307,20 +316,63 @@ class Evidence:
         return latest["validity"] if latest is not None else None
 
     def latest_assessment(self, evidence_id: str) -> dict[str, Any] | None:
+        """The most recently recorded assessment for `evidence_id`.
+
+        Ordered by rowid -- insertion order, monotonic for this append-only table --
+        and never by `assessed_at`, which is a reported wall clock that can repeat or
+        step backwards. Ordering by the clock lets an older `valid` assessment mask a
+        newer `stale`/`superseded` one, and this projection is exactly what the
+        promotion gate and the revalidation gate read. `validity_counts()` already
+        projects with MAX(rowid), so this keeps both projections agreeing.
+        """
         row = self.store.db.execute(
             "SELECT * FROM evidence_validity_assessments "
-            "WHERE evidence_id = ? ORDER BY assessed_at DESC, rowid DESC LIMIT 1",
+            "WHERE evidence_id = ? ORDER BY rowid DESC LIMIT 1",
             (evidence_id,),
         ).fetchone()
         return self._assessment_dict(row) if row is not None else None
 
     def assessments(self, evidence_id: str) -> list[dict[str, Any]]:
+        """The recorded assessment history for `evidence_id`, oldest first.
+
+        Ordered by rowid -- the same insertion order `latest_assessment()` projects from
+        -- so the last entry is always the current validity. `assessed_at` is reported on
+        every entry but never orders them: under a backwards clock a timestamp-ordered
+        list would place its newest entry somewhere other than the end, which is exactly
+        the reading this list must not invite.
+        """
         rows = self.store.db.execute(
             "SELECT * FROM evidence_validity_assessments "
-            "WHERE evidence_id = ? ORDER BY assessed_at, rowid",
+            "WHERE evidence_id = ? ORDER BY rowid",
             (evidence_id,),
         ).fetchall()
         return [self._assessment_dict(row) for row in rows]
+
+    def has_assessment_after(
+        self,
+        evidence_id: str,
+        since_rowid: int,
+        validity: str = "valid",
+    ) -> bool:
+        """Whether `evidence_id` received an assessment of `validity` after an offset.
+
+        Both sides are rows of `evidence_validity_assessments`, so this compares rowids
+        inside one table -- monotonic for an append-only table with no deletes -- and
+        never compares rowids across two different tables.
+        """
+        row = self.store.db.execute(
+            "SELECT 1 FROM evidence_validity_assessments "
+            "WHERE evidence_id = ? AND validity = ? AND rowid > ? LIMIT 1",
+            (evidence_id, validity, since_rowid),
+        ).fetchone()
+        return row is not None
+
+    @staticmethod
+    def _assessment_watermark(db: sqlite3.Connection) -> int:
+        row = db.execute(
+            "SELECT COALESCE(MAX(rowid), 0) AS offset FROM evidence_validity_assessments"
+        ).fetchone()
+        return int(row["offset"])
 
     def assessment_count(self) -> int:
         return int(
@@ -455,7 +507,7 @@ class Evidence:
             for group in self.stale_evidence_groups():
                 suggestions.append(
                     {
-                        "action": "revalidate_evidence",
+                        "action": ACTION_REVALIDATE_EVIDENCE,
                         "reason": "stale_evidence",
                         "capability_id": group["capability_id"],
                         "version_id": group["version_id"],
@@ -577,6 +629,62 @@ class Evidence:
         return counts
 
     # -- evolution decisions (P1 maintenance) ----------------------------
+    def _revalidation_generation(
+        self, evidence_ids: list[str], watermark: int | None = None,
+    ) -> dict[str, str | None]:
+        """Stable recovery IDs, not latest stale rows or unrelated assessment offsets.
+
+        Repeated stale declarations do not create a recovery. Only a recorded valid
+        assessment changes this generation; this does not independently verify it.
+        """
+        generation: dict[str, str | None] = {}
+        for evidence_id in sorted(set(evidence_ids)):
+            query = (
+                "SELECT assessment_id FROM evidence_validity_assessments "
+                "WHERE evidence_id = ? AND validity = 'valid'"
+            )
+            params: list[Any] = [evidence_id]
+            if watermark is not None:
+                query += " AND rowid <= ?"
+                params.append(watermark)
+            row = self.store.db.execute(
+                query + " ORDER BY rowid DESC LIMIT 1", params,
+            ).fetchone()
+            generation[evidence_id] = row["assessment_id"] if row is not None else None
+        return generation
+
+    def _decision_generation(
+        self, decision: dict[str, Any], evidence_ids: list[str],
+        current: dict[str, str | None],
+    ) -> dict[str, str | None]:
+        payload = decision["payload"] or {}
+        if REVALIDATION_GENERATION_KEY in payload:
+            return payload[REVALIDATION_GENERATION_KEY]  # type: ignore[no-any-return]
+        watermark = payload.get(ASSESSMENT_WATERMARK_KEY)
+        if isinstance(watermark, int) and not isinstance(watermark, bool) and watermark >= 0:
+            return self._revalidation_generation(evidence_ids, watermark)
+
+        # A legacy row without an offset cannot prove which recovery it preceded.
+        # Append a present-day observation, never retrofit that row's missing offset.
+        # It suppresses repeat advice now; only a later recorded recovery changes it.
+        signal_key = make_signal_key(
+            {"kind": EVENT_DEDUP_BASELINE, "decision": decision["decision_id"]}
+        )
+        row = self.store.db.execute(
+            "SELECT summary FROM evidence_events WHERE signal_key = ?", (signal_key,),
+        ).fetchone()
+        if row is not None:
+            return json.loads(row["summary"])["generation"]  # type: ignore[no-any-return]
+        self.record(
+            EVENT_DEDUP_BASELINE,
+            signal_key=signal_key,
+            summary=json.dumps(
+                {"decision_id": decision["decision_id"], "generation": current},
+                sort_keys=True, separators=(",", ":"),
+            ),
+        )
+        return current
+
     def create_decision(
         self,
         *,
@@ -587,12 +695,27 @@ class Evidence:
         version_id: str | None = None,
         payload: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], bool]:
-        existing = self.get_decision_by_dedup(dedup_key)
-        if existing is not None:
-            return existing, False
-        decision_id = new_id("dec")
-        stamp = now()
-        with self.store.transaction() as db:
+        # Keep recovery generation, dedup lookup and the creation watermark
+        # under one write lock. UNIQUE still applies across every decision status.
+        with self.store.transaction(immediate=True) as db:
+            stored_payload = payload
+            existing = self.get_decision_by_dedup(dedup_key)
+            if action == ACTION_REVALIDATE_EVIDENCE:
+                stored_payload = dict(payload or {})
+                evidence_ids = stored_payload.get("evidence_ids") or []
+                generation = self._revalidation_generation(evidence_ids)
+                if existing is not None:
+                    original = self._decision_generation(existing, evidence_ids, generation)
+                    if original == generation:
+                        return existing, False
+                    dedup_key += ":recovery:" + make_signal_key(generation)
+                    existing = self.get_decision_by_dedup(dedup_key)
+                stored_payload[REVALIDATION_GENERATION_KEY] = generation
+                stored_payload[ASSESSMENT_WATERMARK_KEY] = self._assessment_watermark(db)
+            if existing is not None:
+                return existing, False
+            decision_id = new_id("dec")
+            stamp = now()
             db.execute(
                 "INSERT INTO evolution_decisions "
                 "(decision_id, dedup_key, action, reason, capability_id, version_id, "
@@ -605,8 +728,8 @@ class Evidence:
                     reason,
                     capability_id,
                     version_id,
-                    json.dumps(payload, ensure_ascii=False, sort_keys=True)
-                    if payload is not None
+                    json.dumps(stored_payload, ensure_ascii=False, sort_keys=True)
+                    if stored_payload is not None
                     else None,
                     stamp,
                     stamp,

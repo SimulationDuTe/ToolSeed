@@ -124,7 +124,7 @@ signal_key = sha256(
 | `verification_id` | 验证记录身份 | 无 | 全局唯一 | 新事件类型、新表或扩展 evidence_events |
 | `version_id` | 被验证版本 | 已有版本 | 必须是 candidate | 无 |
 | `content_hash` | 被验证内容 | 版本已有 | 精确匹配候选版本 | 无 |
-| `created_at` | 验证时间 | 事件已有 | 必须晚于候选版本创建时间 | 无 |
+| `created_at` | 验证时间 | 事件已有 | 必须晚于候选版本创建时间；由写入路径保证（验证只能记录到已存在的 `candidate` 版本上），晋升不得再用时间戳大小重新判定 | 无 |
 | `outcome` | `passed` / `failed` / `unknown` | 无独立字段 | 只有 `passed` 可作为晋升依据 | 复用 success/failure 还是新增枚举 |
 | `method` | 检查方法/命令/用例 | 无 | 必须可审计 | 字符串、结构化对象或引用 |
 | `verifier` | 验证者标识 | 无 | 可选；用于独立性说明 | 身份体系暂不建设 |
@@ -311,7 +311,7 @@ promoted_at
 1. 相同结果信号重复提交不会重复计数；
 2. verified success 必须绑定具体版本内容哈希；
 3. stale/superseded/unassessed 证据不能晋升；
-4. 候选创建前生成的验证不能用于晋升；
+4. 候选创建前生成的验证不能用于晋升（由写入路径保证：验证只能记录到已存在的 `candidate` 版本；晋升按版本 ID 与内容哈希绑定证据，不使用时间戳大小判定先后）；
 5. 自报 agent success 不能单独晋升；
 6. 修订版本未覆盖旧行为时不能晋升；
 7. 晋升失败不改变当前指针；
@@ -596,3 +596,50 @@ current：由 promotion 显式决定，不依赖隐式最高版本
 - `regression_case_ids` 只证明验证记录引用了回归用例；v0.4.0 不执行回归用例，也不能把晋升门槛描述成“系统已自动执行并验证所有旧行为”。
 - `task_outcome_signal` 尚未实现强制 `signal_key` 幂等；重复上报仍可能被计数。本次只实现了 `version_verification` 的幂等。
 - 当前没有验证者身份认证；`source_type`、`verifier` 和 `artifact_ref` 是可审计约定，不是身份认证。
+
+## 11. 维护决策去重生命周期
+
+### 11.1 有效性声明的信任边界
+
+`assess_evidence` 是本地单用户/单受信主体的管理方法，不经 MCP/LocalAdapter 四工具暴露。
+它只校验参数、非空 reason 与证据存在，然后追加有效性声明；不执行外部验证、不认证审查者，
+也不检查产物。`fingerprint` 可省且只保存快照，不自动与当前指纹比对。
+因此写入 `valid` 不证明任务成功，不改变原始证据来源，也不绕过晋升的来源/结果/哈希等门禁。
+若将管理面开放给不可信或远程调用者，必须另行设计授权，不能沿用此本地受信约定。
+
+### 11.2 去重身份与事务
+
+- 原 `action/reason/capability/version/证据集合摘要` 仍作为 scope 基键。
+- 决策 payload 追加内部 `revalidation_generation`：按 evidence ID 排序的映射，值为该证据
+  最近一次 `valid` 评估的稳定 `assessment_id`，没有则为 null；行顺序按评估表 rowid 判定。
+- 初次决策保留基键；相同 scope 的恢复代际变化后，使用
+  `基键 + :recovery: + SHA-256(规范化代际映射)`，形成独立决策；旧行保持原状态与审计。
+- 相同代际在 proposed/applied/dismissed 任一状态均去重。重复 stale、superseded→stale
+  （中间无 valid）、无关证据评估与仅 dismiss 均不改变代际。
+- 代际读取、查重、兼容观察与新决策写入在同一个 `BEGIN IMMEDIATE` 内；保留全状态 UNIQUE 约束。
+- 新决策的 `assessment_watermark` 仍在实际写入事务中捕获；它与代际分别负责“重现事件身份”
+  和“创建后重评”。代际 ID 不能替代逐条最新 valid + watermark 后 valid 的既有应用门禁。
+- scope 集合变化沿用既有不同基键语义；本次不把不同证据范围合并成单个版本级维护任务。
+
+### 11.3 旧格式兼容，不回填历史
+
+旧基键有可用 watermark 时，从 `rowid <= 原 watermark` 的评估记录重建原代际，不改旧 payload。
+缺少或非法 watermark 时，无法仅凭时间戳或跨表 rowid 证明历史恢复的先后，故：
+
+1. 首次维护追加唯一的 `maintenance_dedup_baseline` core 事件，记录旧 decision ID 与当前代际；
+   `signal_key` 由事件类型和旧 decision ID 规范化哈希构成。这是当前观察，不是旧创建顺序。
+2. 同代维护继续复用旧行；旧决策仍因缺 watermark 无法应用，不自动 applied，不补 offset。
+3. 只有该观察之后真实追加的 valid 恢复、随后再次 stale，才能产生具有新 ID/key/watermark 的决策。
+   观察之前无法排序的历史恢复被保守折叠；调用方不能仅 dismiss 就要求重新生成。
+
+该兼容事件不属于待重新验证事件类型、不声明 valid、不表示成功。它会让总事件数与 unassessed
+各增加 1，并可能计入通用 `assess_evidence` 建议，但不增加任务结果/验证成功数。
+本变更复用 Schema v6 的 payload/事件字段与唯一索引，不升级 Schema，不改变公共四工具契约。
+内部 payload/事件类型是新增审计信息；旧决策、原始事件及评估记录均不改写。
+
+### 11.4 仍有的限制
+
+维护报告在决策创建事务之外生成，scope 可能在加锁前变化；应用前检查与结案之间的既有 TOCTOU
+窗口本次不处理。最新投影与 watermark 依赖评估表追加式 rowid 顺序；删除、重建、导入重排或
+`VACUUM`（非 INTEGER PRIMARY KEY 表的 rowid 可变）可能破坏该前提，不能据稳定 assessment ID
+就声称 watermark 也跨这些操作稳定。本次不提供相应迁移或恢复保证。

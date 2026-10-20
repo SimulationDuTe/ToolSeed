@@ -186,7 +186,10 @@ P1 第一块已实现：
 - `run_maintenance()`：把建议转成去重的 `evolution_decisions`，供人工查看/驳回；
 - `apply_evolution_decision()`：自动应用 `diagnose_failure` 决策并原子写入诊断；
   对 `revalidate_evidence` 决策，必须先对决策范围内的每条证据重新评估为 `valid`，
-  且评估时间晚于决策创建时间，Core 才允许应用；其他动作仍要求人工处理；
+  且该评估必须**记录在决策创建之后**（按评估表的记录顺序判定，不使用时间戳）；
+  其他动作仍要求人工处理；
+- 缺少该记录顺序标记的旧决策一律拒绝应用（`DECISION_ASSESSMENT_WATERMARK_MISSING`）；
+  Core 不回填标记、不自动标记为已应用、也不伪造历史顺序；
 - 重新验证不会自动把旧证据“洗白”：新的 `valid` 评估必须来自显式 `assess_evidence` 调用；
 - `capability_observations`：保存从证据提炼的适用性、失败模式、依赖/环境敏感性和待验证假设，
   可标记 `active` / `stale` / `retracted`，但不会直接修改能力或激活指针；
@@ -200,15 +203,35 @@ P1 第一块已实现：
 ### 重新验证流程
 
 1. 证据被标记 `stale`（指纹/策略变化或隔离）后，`run_maintenance()` 生成
-   `revalidate_evidence` 决策，payload 记录 `version_id` 和需要复核的 `evidence_ids`
-   （只包含交付/任务结果类证据）；
+   `revalidate_evidence` 决策，payload 记录 `version_id`、需要复核的 `evidence_ids`
+   （只包含交付/任务结果类证据）以及创建时的评估表偏移 `assessment_watermark`；
 2. 人工或外部验证器重新执行检查，并对每条证据显式调用 `assess_evidence(..., "valid", ...)`；
 3. `apply_evolution_decision()` 逐条检查：
-   - 最新评估必须是 `valid`；
-   - 评估时间必须晚于决策创建时间；
+   - 决策带有可用的 `assessment_watermark`；
+   - 最新评估必须是 `valid`（按评估记录顺序，不使用时间戳）；
+   - 决策创建之后必须记录过一条 `valid` 评估（比较评估表偏移，不使用时间戳）；
    - 证据必须属于该决策对应的版本；
 4. 全部通过才把决策标记为 `applied`；任一条不满足则拒绝，决策保持 `proposed`；
-5. Core 不会自动把旧证据改成 `valid`，也不会因为“决策存在”就默认通过。
+5. Core 不会自动把旧证据改成 `valid`，也不会因为“决策存在”就默认通过；
+6. 升级前的旧决策没有 `assessment_watermark`，一律拒绝应用。恢复路径：直接对范围内证据调用
+   `assess_evidence(..., "valid", ...)` 完成真正的重评，再用 `dismiss_evolution_decision(...)`
+   关闭旧决策——重评后该证据不再属于 stale 集合，维护流程不会为它再生成建议；若 stale 集合
+   已经变化，维护流程会生成带有效 `assessment_watermark` 的新决策，可正常应用。
+
+### 维护决策的恢复代际
+
+`assess_evidence(..., "valid", ...)` 接受本地受信管理方的有效性声明，不执行独立验证；
+`fingerprint` 可选且仅存档，不自动核验。调用方必须先完成有依据的审查，不能把传入 `valid`
+本身当作验证成功、任务成功或晋升授权。
+
+`revalidate_evidence` 按证据范围及各证据最近一次 `valid` 评估的稳定 ID 去重；
+恢复后再次 stale 可以产生新决策，重复 stale、无关评估或仅 dismiss 不会重建。
+新决策仍须在其真实创建 watermark 之后逐条获得 valid 评估才能应用，旧决策不被重置或改写。
+旧格式有 watermark 的决策按其原偏移重建代际；无可用 watermark 的决策仍 fail-closed，
+首次维护只追加一条 `maintenance_dedup_baseline` 当前观察事件，不回填旧 offset。
+该观察之前无法排序的恢复被保守折叠，之后的新恢复才能开启新代际。
+观察事件会使事件数和 unassessed 各增加 1（可能进入通用评估建议），不增加任何成功计数。
+详细兼容性与限制见 [证据契约 §11](docs/EVIDENCE-PROMOTION-CONTRACT.md#11-维护决策去重生命周期)。
 
 ## 存储
 
@@ -317,6 +340,7 @@ python -m toolseed migrate-flatten --data-dir .toolseed \
 - `archive(capability_id, reason)`：退役一个能力；
 - `record_task_outcome(...)`：显式记录带来源的任务结果信号；
 - `assess_evidence(...)` / `evidence_validity(...)`：追加证据有效性评估并读取当前投影；
+  其中 `assessments` 历史列表按记录顺序（最旧在前）返回，末项即当前投影，`assessed_at` 仅供审计；
 - `expire_version_evidence(...)`：策略/环境变化时显式让某版本证据失效；
 - `maintenance_report()`：维护扫描，返回未评估/失效证据、重复失败和开放诊断；
 - `run_maintenance()`：把维护建议落地为去重的 `evolution_decisions`；

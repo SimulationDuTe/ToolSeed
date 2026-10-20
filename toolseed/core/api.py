@@ -23,6 +23,7 @@ from .errors import (
     error_response,
 )
 from .evidence import (
+    ASSESSMENT_WATERMARK_KEY,
     EVENT_ARCHIVED,
     EVENT_DELIVERED,
     EVENT_DUPLICATE,
@@ -56,6 +57,7 @@ REASON_VERIFICATION_INVALID = "VERIFICATION_EVIDENCE_INVALID"
 REASON_CONTENT_HASH_MISMATCH = "CONTENT_HASH_MISMATCH"
 REASON_REGRESSION_MISSING = "REGRESSION_VERIFICATION_MISSING"
 REASON_CURRENT_CONFLICT = "CURRENT_VERSION_CONFLICT"
+REASON_WATERMARK_MISSING = "DECISION_ASSESSMENT_WATERMARK_MISSING"
 
 
 class _CandidateRejected(Exception):
@@ -772,12 +774,16 @@ class ToolSeed:
                         "verification evidence is bound to a different content hash",
                         reason_code=REASON_CONTENT_HASH_MISMATCH,
                     )
-                if verification["created_at"] <= version["created_at"]:
-                    return error_response(
-                        INVALID_ARGUMENT,
-                        "verification evidence must be created after the candidate version",
-                        reason_code=REASON_VERIFICATION_INVALID,
-                    )
+                # Creation order is established structurally at write time, not by the
+                # clock: record_version_verification resolves this exact version row
+                # before inserting anything, and only accepts a `candidate` version, so
+                # an event carrying this version_id cannot predate the version it
+                # verifies. Re-deriving that from `created_at` compared the wall clock
+                # against itself, which is not monotonic at the resolution the timestamp
+                # is written with -- on Windows/CPython 3.11 consecutive
+                # datetime.now(UTC) calls collide, so a valid verification could share
+                # the version's exact created_at and be rejected. `created_at` is kept
+                # as audit information only.
                 if verification["source_type"] not in INDEPENDENT_SOURCE_TYPES:
                     return error_response(
                         INVALID_ARGUMENT,
@@ -948,6 +954,11 @@ class ToolSeed:
         invalidated_by: Any = None,
         superseded_by: Any = None,
     ) -> dict[str, Any]:
+        """Append a trusted local manager's declaration, not independent verification.
+
+        Fingerprints are optional audit snapshots, not checked attestations. This
+        management method is not exposed through the four Agent tools.
+        """
         if not isinstance(evidence_id, str):
             return error_response(INVALID_ARGUMENT, "evidence_id must be a string")
         if validity not in VALIDITIES:
@@ -1317,13 +1328,32 @@ class ToolSeed:
                     INVALID_ARGUMENT,
                     "revalidate_evidence decision is missing version/evidence scope",
                 )
+            watermark = payload.get(ASSESSMENT_WATERMARK_KEY)
+            if isinstance(watermark, bool) or not isinstance(watermark, int) or watermark < 0:
+                # A decision recorded before assessment offsets existed cannot prove that
+                # its scope was revalidated afterwards, and the wall clock must not stand
+                # in for that proof. Fail closed; never backfill the offset from the
+                # current MAX(rowid), which would invent an order that never happened.
+                return error_response(
+                    INVALID_ARGUMENT,
+                    "revalidate_evidence decision carries no usable assessment offset and "
+                    "cannot be applied; re-assess the scoped evidence, dismiss this "
+                    "decision, and let maintenance raise a new one",
+                    reason_code=REASON_WATERMARK_MISSING,
+                )
             for evidence_id in evidence_ids:
                 latest = self.evidence.latest_assessment(evidence_id)
-                if (
-                    latest is None
-                    or latest["validity"] != "valid"
-                    or latest["assessed_at"] < decision["created_at"]
-                ):
+                if latest is None or latest["validity"] != "valid":
+                    fresh = False
+                else:
+                    # Freshness is structural, not temporal: the decision froze the
+                    # assessment offset it was created at, and rowid is monotonic inside
+                    # that one table, so a revalidation recorded after the decision
+                    # always carries a greater rowid. The wall clock is not consulted,
+                    # so a colliding timestamp can neither reject a real revalidation nor
+                    # accept an assessment that predates the decision.
+                    fresh = self.evidence.has_assessment_after(evidence_id, watermark)
+                if not fresh:
                     return error_response(
                         INVALID_ARGUMENT,
                         "all scoped evidence must be reassessed as valid after the decision was created",
