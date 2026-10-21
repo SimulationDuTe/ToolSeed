@@ -12,7 +12,8 @@
 也不是完整 MVP。
 
 规划中的首发形态是一个通用 Python 包 + `toolseed-mcp` stdio 服务，让 Codex、Claude Code、
-Cursor 等 Agent 共享同一能力库；MCP 层尚未实现。
+Cursor 等 Agent 共享同一能力库。**MCP stdio 层已实现并用官方 SDK 2.3.0 验证**；
+当前形态是 Alpha，状态与限制见 [docs/ALPHA-STATUS.md](docs/ALPHA-STATUS.md)。
 
 ## 快速开始
 
@@ -48,6 +49,124 @@ box.close()
 ```
 
 `status: "accepted"` 只表示已可靠持久化，**不等于** `version_status: "ready"`。
+
+## Alpha 快速上手
+
+从安装到第一次真实复用的最短路径。每一步都能在本地核验，不需要"相信文档"。
+
+### 1. 安装
+
+```bash
+pip install toolseed
+toolseed-mcp --help
+```
+
+`toolseed-mcp` 与 `python -m toolseed.mcp_server` 等价。正式部署建议写绝对路径，
+避免宿主工作目录变化后找不到入口。
+
+### 2. 配置 MCP stdio
+
+宿主按 `mcpServers`（Claude Code / Cursor 风格）或 `mcp_servers`（Codex 风格）登记：
+
+```json
+{
+  "mcpServers": {
+    "toolseed": {
+      "command": "/abs/path/to/toolseed-mcp",
+      "args": ["--data-dir", "/abs/path/to/.toolseed"]
+    }
+  }
+}
+```
+
+```toml
+[mcp_servers.toolseed]
+command = "/abs/path/to/toolseed-mcp"
+args = ["--data-dir", "/abs/path/to/.toolseed"]
+```
+
+`--data-dir` 与 `TOOLSEED_DATA_DIR` 都能指定持久化目录；两者同时给出时以命令行参数为准。
+路径请写绝对路径——数据目录漂移会让能力库"看起来丢了"。
+
+### 3. 确认四个公共工具可用
+
+用官方 MCP 客户端连一次自己的服务（`mcp` 是本包的依赖，已随包安装）：
+
+```python
+import asyncio
+from mcp import Client, StdioServerParameters
+
+
+async def main() -> None:
+    params = StdioServerParameters(
+        command="/abs/path/to/toolseed-mcp",
+        args=["--data-dir", "/abs/path/to/.toolseed"],
+    )
+    async with Client(params) as client:
+        tools = [tool.name for tool in (await client.list_tools()).tools]
+        stats = (await client.call_tool("toolbox_stats", {})).structured_content or {}
+    print(tools)
+    print(sorted(stats))
+
+
+asyncio.run(main())
+```
+
+期望工具名恰好是 `toolbox_search`、`toolbox_save`、`toolbox_run`、`toolbox_stats`，
+且 stats 中含 `capabilities` 与 `versions`。仓库内的等价检查是
+`python scripts/package_smoke.py`；若本机沙箱禁止创建子进程管道，可设
+`TOOLSEED_SKIP_STDIO_TEST=1` 跳过该用例。
+
+### 4. 设置并核验持久化数据目录
+
+- **设置**：`--data-dir <path>` 或环境变量 `TOOLSEED_DATA_DIR`；两者都不给时使用用户级默认
+  `~/.toolseed/`。
+- **核验**：跑完第 3 步的握手后，确认 `<data-dir>/toolseed.sqlite3` 已生成；
+  如果你并不打算使用默认目录，还应确认 `~/.toolseed/` 没有被创建。
+- **共享与隔离**：CLI 与 MCP 指向同一目录即共享同一能力库；不同 `--data-dir` 之间完全隔离，
+  互不串组。
+
+### 5. 搜索、保存、交付
+
+四个工具的完整语义见[下文四个公共 API](#四个公共-api)与[Candidate 格式](#candidate-格式)。
+最短路径：
+
+```jsonc
+// toolbox_search：先搜一次，避免重复外化
+{"query": "外部工作目录里 import 报 ModuleNotFoundError 怎么排查"}
+
+// toolbox_save：只提交一个 candidate；字段长度先自查（name ≤ 80、description ≤ 280、
+// when_to_use ≤ 500、not_for ≤ 10×160、tags ≤ 12×40、applicability ≤ 20×120、
+// content ≤ 32 KiB、整体 ≤ 64 KiB），manifest 恰好 7 个字段
+{"candidate": {"protocol_version": 1, "manifest": {"name": "fix_external_cwd_import", "kind": "procedure",
+  "description": "让包在源码树之外的工作目录中可导入", "when_to_use": "外部 cwd 报 ModuleNotFoundError",
+  "not_for": ["依赖本身缺失"], "tags": ["python", "install"], "applicability": {"harnesses": [], "operating_systems": [], "required_tools": []}},
+  "content": "1. …\n2. …"}, "intent": "这类交付排障会反复出现"}
+
+// toolbox_run：交付指引，不执行
+{"capability": "cap_xxx"}
+```
+
+保存被拒时按 Skill 的规则处理：错误信息会写明是哪个字段超限，只改那个字段再提交一次；
+`POLICY_BLOCKED` 是拒绝而不是格式问题。字段约束与错误处理见
+[Skill（随包分发）](toolseed/skill/SKILL.md)。
+
+### 6. 读懂 Invocation、Evidence 与 unknown
+
+- **Invocation**：`toolbox_run` 每交付一次指引就写一条记录（能力、版本、时间、可用的任务/会话
+  上下文）。它表示"这条指引被交付过"，**不表示任务成功**。
+- **Evidence**：追加式事件流，如 `procedure_saved`、`search_performed`、`procedure_delivered`、
+  `task_outcome_signal`、隔离/解除/晋升等。原始事件不会被改写，纠正靠追加新事件表达。
+- **`unknown`**：没有可信外部结果信号时的诚实取值。`toolbox_stats` 用 `signals` 与
+  `measured` 区分"没有信号"和"结果为零"；成本类字段在宿主不提供时同样是 `unknown`，
+  不等于零。
+- **四层要分开说**：能力被找到 → 指引被交付 → 方法被实际采用 → 任务目标达成。
+  交付不等于采用，采用不等于成功。
+
+### 7. 当前支持范围与不支持的功能
+
+见[当前范围与未实现项](#当前范围与未实现项)。Alpha 状态、已验证机制与限制见
+[docs/ALPHA-STATUS.md](docs/ALPHA-STATUS.md)。
 
 ## 四个公共 API
 
@@ -476,9 +595,11 @@ GitHub Release 由 `v*` tag 触发：构建 sdist/wheel，生成 `SHA256SUMS`，
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **175 项**测试；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
+当前 **252 项**测试；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
+- 随包 Skill 与 Core 契约一致性（Skill 写明的字段上限必须等于 Core 权威常量）、保存被拒后的
+  最小修正指导、README 不含过时"未实现"声明且测试数量与实际一致；
 - 版本身份、不可变版本、内容哈希稳定性、精确重复与近似不合并；
 - 本地持久化、重开恢复、持久化失败返回 `SAVE_PERSISTENCE_FAILED`；
 - 保存来源上下文的脱敏持久化与长度上限；

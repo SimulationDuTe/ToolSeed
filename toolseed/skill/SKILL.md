@@ -49,7 +49,9 @@ Before writing a new reusable procedure, call `toolbox_search` once.
 
 ## 5. Save
 
-Save only when reuse is plausible and the method is describable.
+Save only when reuse is plausible and the method is describable. **Not every task
+should end with a save.** A task that produced no reusable method ends with no
+save, and that is a normal outcome, not a failure.
 
 - `manifest` must contain exactly: `name`, `kind` (`procedure`), `description`,
   `when_to_use`, `not_for`, `tags`, `applicability`.
@@ -60,6 +62,41 @@ Save only when reuse is plausible and the method is describable.
 - To revise an existing capability, pass `target_capability_id`; this creates a
   new **candidate** version and never rewrites or replaces the current version.
   A candidate only becomes current after a separate verified promotion.
+
+### Check the candidate before you submit it
+
+| Field | Limit |
+|---|---|
+| `name` | ≤ 80 characters |
+| `description` | ≤ 280 characters |
+| `when_to_use` | ≤ 500 characters |
+| `not_for` | ≤ 10 items, each ≤ 160 characters |
+| `tags` | ≤ 12 items, each ≤ 40 characters |
+| `applicability.*` | ≤ 20 items per array, each ≤ 120 characters |
+| `content` | 1–32,768 UTF-8 bytes |
+| whole candidate | ≤ 64 KiB |
+
+`manifest` must carry exactly those seven fields — no extras, none missing.
+The text limits count characters; `content` and the whole candidate are byte
+limits. A short `description` is a feature: say what the method does, not every
+case it covers.
+
+### When a save is rejected
+
+A rejected save returns `ok: false` and an `error` object with `code`,
+`message` and `retryable`. The message names the offending field and its
+limit, for example `manifest.description exceeds 280 characters`.
+
+1. Read `error.code` and `error.message`; they state what to fix.
+2. Change only the field the message names, then submit once. Never resend an
+   unchanged candidate, and never shorten `content` to satisfy a manifest limit.
+3. `CONTRACT_VIOLATION` — the candidate broke the contract; fix the named field.
+4. `POLICY_BLOCKED` — a refusal, not a formatting problem. Do not reword a
+   credential or a "bypass the policy" instruction to get past it; drop the
+   method or rewrite it without those parts.
+5. `duplicate: true` — the same method is already stored. That is a success for
+   your purpose; do not store a near-duplicate. `possible_duplicates` is a hint
+   list, not a block, and it is yours to judge.
 
 `status: accepted` means stored. A revision candidate is not ready or current
 just because its content scan passed. `version_status: ready` on a newly created
