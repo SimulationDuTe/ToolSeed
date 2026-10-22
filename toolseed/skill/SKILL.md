@@ -32,6 +32,14 @@ method, clear future reuse). Do not spend an extra model round just to decide
 
 Before writing a new reusable procedure, call `toolbox_search` once.
 
+`toolbox_search(query, context?)`: Put the problem or reusable goal in the string `query`. `context` must be a dict/JSON object, never a
+free-text string; omit it or use `null` when unused. Example tool arguments
+with no context fields assumed:
+
+```json
+{"query": "diagnose repeated failures", "context": {}}
+```
+
 - Skip it for obvious one-off actions.
 - Do not repeat an equivalent search in the same task if context is unchanged.
 - Read `when_to_use`, `not_for` and `kind` — not just the name.
