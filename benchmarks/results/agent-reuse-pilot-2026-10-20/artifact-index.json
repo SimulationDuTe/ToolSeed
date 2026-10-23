@@ -1,0 +1,13 @@
+{
+  "archive": "F:\\ToolSeed\\.test-data-agent-value-main\\experiment-artifacts.zip",
+  "sha256": "6c1a6f3e671893d5507d0db7e22b5325efcb8e573f913986f515b732dcd7eae3",
+  "files": 387,
+  "bytes": 342400,
+  "exclusions": [
+    "virtual environments",
+    "caches",
+    "inaccessible temporary directories",
+    "Core source"
+  ],
+  "note": "Primary empty library and preflight/feasibility roles must not be pooled as value evidence."
+}

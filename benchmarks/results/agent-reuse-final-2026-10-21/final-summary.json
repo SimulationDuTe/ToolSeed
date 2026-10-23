@@ -1,0 +1,27 @@
+{
+  "tasks": 8,
+  "accepted": 8,
+  "by_arm": {
+    "A": {
+      "accepted": 4,
+      "tasks": 4
+    },
+    "B": {
+      "accepted": 4,
+      "tasks": 4
+    }
+  },
+  "bridge_calls_total": 10,
+  "bridge_saves_accepted": 1,
+  "bridge_deliveries": 3,
+  "adoption_claims": 3,
+  "totals": {
+    "input_tokens_reported": 837536,
+    "output_tokens_reported": 239135,
+    "total_tokens_reported": 25032601,
+    "cache_read_tokens_reported": 23955930,
+    "tool_calls": 345
+  },
+  "provider_tokens_note": "Provider billing tokens are not exposed by the session record; the values above are the SDK-reported request counters.",
+  "monetary_cost": "unknown"
+}

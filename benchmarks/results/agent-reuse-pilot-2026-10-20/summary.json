@@ -1,0 +1,126 @@
+{
+  "planned_records": 18,
+  "completed_and_verified": 18,
+  "missing_records": [],
+  "by_condition": {
+    "A": {
+      "completed": 9,
+      "independent_successes": 9,
+      "save_attempts": 0,
+      "searches": 0,
+      "content_reads": 0,
+      "tasks_with_linked_declared_adoption": 0,
+      "toolseed_operations": 0,
+      "toolseed_api_elapsed_ms": 0,
+      "response_utf8_bytes": 0,
+      "opportunity_declared_true": 0,
+      "final_verifier_pass_elapsed_ms": 679.4267999794101,
+      "observed_intervals_sum_ms_not_resource_or_active_time": 19480772.6696
+    },
+    "B": {
+      "completed": 9,
+      "independent_successes": 9,
+      "save_attempts": 0,
+      "searches": 5,
+      "content_reads": 0,
+      "tasks_with_linked_declared_adoption": 0,
+      "toolseed_operations": 5,
+      "toolseed_api_elapsed_ms": 31.124400018597953,
+      "response_utf8_bytes": 75,
+      "opportunity_declared_true": 9,
+      "final_verifier_pass_elapsed_ms": 672.9903999512317,
+      "observed_intervals_sum_ms_not_resource_or_active_time": 20061301.0626
+    }
+  },
+  "pairs": [
+    {
+      "instance_id": "data0",
+      "A_success": true,
+      "B_success": true,
+      "success_delta_B_minus_A": 0
+    },
+    {
+      "instance_id": "data1",
+      "A_success": true,
+      "B_success": true,
+      "success_delta_B_minus_A": 0
+    },
+    {
+      "instance_id": "data2",
+      "A_success": true,
+      "B_success": true,
+      "success_delta_B_minus_A": 0
+    },
+    {
+      "instance_id": "debug0",
+      "A_success": true,
+      "B_success": true,
+      "success_delta_B_minus_A": 0
+    },
+    {
+      "instance_id": "debug1",
+      "A_success": true,
+      "B_success": true,
+      "success_delta_B_minus_A": 0
+    },
+    {
+      "instance_id": "debug2",
+      "A_success": true,
+      "B_success": true,
+      "success_delta_B_minus_A": 0
+    },
+    {
+      "instance_id": "env0",
+      "A_success": true,
+      "B_success": true,
+      "success_delta_B_minus_A": 0
+    },
+    {
+      "instance_id": "env1",
+      "A_success": true,
+      "B_success": true,
+      "success_delta_B_minus_A": 0
+    },
+    {
+      "instance_id": "env2",
+      "A_success": true,
+      "B_success": true,
+      "success_delta_B_minus_A": 0
+    }
+  ],
+  "infrastructure_interrupted_primary_cases": [
+    "data1-A",
+    "data1-B",
+    "data2-A",
+    "data2-B",
+    "debug1-A",
+    "debug1-B",
+    "env1-A",
+    "env1-B"
+  ],
+  "net_benefit": "unknown",
+  "latency_comparison_valid": false,
+  "model_configuration_equality_verified": false,
+  "unknown_costs": [
+    "provider_tokens",
+    "all_Harness_tool_operations",
+    "active_model_time",
+    "fixed_native_tool_schema_context_tokens",
+    "creation_decision_and_writing_reasoning",
+    "all_agent_validation_cost",
+    "all_prior_verifier_passes",
+    "maintenance_and_future_adaptation",
+    "configuration_repair_and_parent_orchestration_cost",
+    "infrastructure_retry_cost"
+  ],
+  "library": {
+    "schema": 6,
+    "capabilities": [],
+    "versions": [],
+    "event_counts": {
+      "search_performed": 5
+    }
+  },
+  "provided_B_manual_utf8_bytes": 43218,
+  "manual_bytes_are_not_measured_token_consumption": true
+}

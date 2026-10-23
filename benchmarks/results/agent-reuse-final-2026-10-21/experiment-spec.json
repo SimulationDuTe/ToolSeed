@@ -1,0 +1,49 @@
+{
+  "phases": [
+    "T0",
+    "T1",
+    "T2",
+    "T3"
+  ],
+  "arms": [
+    "A",
+    "B"
+  ],
+  "targets": {
+    "T0": {
+      "env": "env-t0",
+      "data": "data-t0",
+      "python": "3.11"
+    },
+    "T1": {
+      "env": "env-t1",
+      "data": "data-t1",
+      "python": "3.13"
+    },
+    "T2": {
+      "env": "env-t2",
+      "data": "data-t2",
+      "python": "3.13"
+    },
+    "T3": {
+      "env": "交付 目录/env-t3",
+      "data": "数据 目录/data-t3",
+      "python": "3.13"
+    }
+  },
+  "wheel": {
+    "path": "F:\\ToolSeed\\.test-data-agent-reuse-final\\supply\\wheel\\toolseed-0.4.0-py3-none-any.whl",
+    "sha256": "7fba4dc07ab957713ee387f6db9b2ad40be3132c16816e732fb2b18cb1654f87"
+  },
+  "bridge_verbatim_copy_of_registered_pilot": true,
+  "workspace_order": [
+    "T0-A",
+    "T0-B",
+    "T1-B",
+    "T1-A",
+    "T2-A",
+    "T2-B",
+    "T3-B",
+    "T3-A"
+  ]
+}

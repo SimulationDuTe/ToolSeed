@@ -1,0 +1,137 @@
+{
+  "date": "2026-10-23",
+  "branch": "develop",
+  "head": "f63c007284b592bd4c07d0509f1c753d6c7b571f",
+  "host": "DSH 0.2.1-rc.2 headless",
+  "desktop_ui_acceptance": "not_verified",
+  "codex_cli_used": false,
+  "closed_loop": "not_established",
+  "product_code_changed": false,
+  "fixture_reused": "benchmarks/p1b_acceptance.py prepare and verify only",
+  "current_artifact_root": ".test-data-p1b-dsh-20261023-61cc9a69",
+  "initial_failed_artifact_root": ".test-data-p1b-dsh-20261023-7f44df06",
+  "isolation": {
+    "private_dsh_home": true,
+    "private_mcp_library": true,
+    "private_skill_roots_only": true,
+    "skill_source_bytes": 8205,
+    "production_installed_skill_bytes": 8650,
+    "production_installed_skill_matches_source": false,
+    "production_database_wal_shm_unchanged": true,
+    "production_skill_and_home_patch_unchanged": true,
+    "capabilities_preseeded": false,
+    "sandbox_mode": "workspace-write",
+    "approval_policy": "ask",
+    "escalation_granted": false,
+    "acl_changed_by_acceptance_commands": false,
+    "p1a_plugin_mounted": false
+  },
+  "provider_requested": "opencode-zen-free-provider",
+  "model_requested": "deepseek-v4.1-flash-free",
+  "reasoning_effort_requested": "max",
+  "task_a": {
+    "real_agent_run": true,
+    "cli_exit_code": 0,
+    "runner_exit_code": 0,
+    "duration_seconds": 118.129,
+    "independent_verification": {
+      "passed": true,
+      "cases_passed": 5,
+      "cases_failed": 0,
+      "protected_inputs_unchanged": true,
+      "performed_after_agent_turn": true,
+      "result_returned_to_agent": false
+    },
+    "agent_validator_execution_confirmed": false,
+    "skill_body_load_observed": false,
+    "skill_catalog_delivery": "unknown",
+    "search_calls": 1,
+    "search_purpose": "validator execution",
+    "search_results": 0,
+    "save_calls": 0,
+    "stats_calls": 1,
+    "run_calls": 0,
+    "adoption": "not_observed",
+    "retained_events": 94,
+    "thinking_events_not_retained": 19,
+    "tool_results_completed": 11,
+    "tool_results_error": 10,
+    "evidence_lines": {
+      "escalation_call_and_rejection": [71, 72],
+      "search_call_and_result": [75, 76],
+      "stats_call_and_result": [83, 84]
+    }
+  },
+  "task_b": {
+    "status": "not_run",
+    "reason": "No capability saved by task A; no independent reuse precondition",
+    "non_script_cross_task_reuse": "not_verified"
+  },
+  "isolated_database": {
+    "schema_version": 6,
+    "capabilities": 0,
+    "versions": 0,
+    "invocations": 0,
+    "evidence_events": 1,
+    "event_types": ["search_performed"],
+    "event_outcome": "unknown",
+    "task_outcomes_recorded": false
+  },
+  "cost": {
+    "dsh_usage_records": 22,
+    "sum_inputTokens": 17253,
+    "sum_cacheReadTokens": 200704,
+    "sum_outputTokens": 7311,
+    "sum_totalTokens": 225268,
+    "usage_semantics": "Host-reported per-step fields summed; includes repeated and cached context",
+    "physical_model_requests": "unknown",
+    "billing": "unknown",
+    "maintenance_cost": "unknown",
+    "net_reuse_benefit": "unknown"
+  },
+  "initial_failed_attempt": {
+    "cli_exit_code": 1,
+    "duration_seconds": 5.539,
+    "independent_verification_passed": false,
+    "error": "Provider direct-file import failed: RetryPolicySchema.volatile is not a function; NO_ADAPTER",
+    "usage": "unknown"
+  },
+  "blockers": [
+    "DSH pwsh could not create its ACL lock file; no successful checker execution receipt",
+    "No actual Skill body load or toolbox_save; behavioral cause unknown",
+    "Desktop configuration changed externally during acceptance; this fixed headless route is not current Desktop acceptance"
+  ],
+  "protection": {
+    "existing_formal_files_checked": 129,
+    "git_metadata_files_checked": 3,
+    "existing_file_changes": [],
+    "desktop_profile_patch_changed": true,
+    "desktop_patch_written_by_this_acceptance": false,
+    "external_change_origin": "unknown"
+  },
+  "tests_not_run": [
+    "Historical A/B experiments",
+    "Previously passed verifier selfcheck",
+    "P1-A and GUI regression suites",
+    "Full quality gates",
+    "Task B real behavior acceptance"
+  ],
+  "artifact_consistency_checks": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0,
+    "exit_code": 0,
+    "real_cross_task_behavior_acceptance": false,
+    "git_diff_check_exit_code": 0
+  },
+  "final_git_status": {
+    "modified_tracked_files": 8,
+    "untracked_files": 72,
+    "staged_files": 0,
+    "new_formal_files_this_turn": [
+      "docs/P1-B-DSH.md",
+      "benchmarks/results/p1b-dsh-2026-10-23/result.json"
+    ]
+  },
+  "next_step": "Restore a normally functioning isolated DSH checker environment and confirm current Skill discovery, then rerun the same tasks without ToolSeed hints; run B only after actual validated A save"
+}

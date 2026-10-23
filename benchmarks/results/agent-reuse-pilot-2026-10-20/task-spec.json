@@ -1,0 +1,463 @@
+[
+  {
+    "instance_id": "env0",
+    "family": "environment",
+    "phase": 0,
+    "condition": "A",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\env0-A",
+    "prompt": "Diagnose and repair this local Python service launch. Its required marker is 'warehouse-east'. Run probe.py using the provided interpreter to reproduce and verify. Only launch.json may be changed; do not modify probe.py, service/app.py, or configuration data. The fix must retain the real app execution. This launch/configuration support work recurs; prefer a small diagnosis over replacing the app.",
+    "expected": {
+      "health": "ok",
+      "marker": "warehouse-east"
+    },
+    "input_hashes": {
+      "service/app.py": "dc976ac57ae0be18817e069aeb30d6403e7a1000c1c1f869e37ffb27d4be6890",
+      "probe.py": "73071ea919c30ecfb755f9574f1a322336281a344287794cbb078719b2eb113d",
+      "service/config/settings.json": "e5e71ff1fa5ee79d713daa91f445b83abd1c69f39bc5548cf97bfb92cf0fa62d",
+      "service/config/settings.dev.json": "184c1cb31d4c0c01531575d59856897d7379a52e22bff4e22e56a7d182de4d64",
+      "launch.json": "5b1ecd7ccc145e29949ee21c8a699adcd47d934713d310b9ec3d6fe509b7ff58",
+      "task.md": "4735a3692561a5c3fdbae453ad2bc0b3857787068224acab95c55f0326e3dfd6"
+    },
+    "mutable": [
+      "launch.json"
+    ]
+  },
+  {
+    "instance_id": "env0",
+    "family": "environment",
+    "phase": 0,
+    "condition": "B",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\env0-B",
+    "prompt": "Diagnose and repair this local Python service launch. Its required marker is 'warehouse-east'. Run probe.py using the provided interpreter to reproduce and verify. Only launch.json may be changed; do not modify probe.py, service/app.py, or configuration data. The fix must retain the real app execution. This launch/configuration support work recurs; prefer a small diagnosis over replacing the app.",
+    "expected": {
+      "health": "ok",
+      "marker": "warehouse-east"
+    },
+    "input_hashes": {
+      "service/app.py": "dc976ac57ae0be18817e069aeb30d6403e7a1000c1c1f869e37ffb27d4be6890",
+      "probe.py": "73071ea919c30ecfb755f9574f1a322336281a344287794cbb078719b2eb113d",
+      "service/config/settings.json": "e5e71ff1fa5ee79d713daa91f445b83abd1c69f39bc5548cf97bfb92cf0fa62d",
+      "service/config/settings.dev.json": "184c1cb31d4c0c01531575d59856897d7379a52e22bff4e22e56a7d182de4d64",
+      "launch.json": "5b1ecd7ccc145e29949ee21c8a699adcd47d934713d310b9ec3d6fe509b7ff58",
+      "task.md": "d8c7898295ef0e395453173e5ba63b14e91148efe6d233432215e8062203989e",
+      "toolseed-guide.md": "17710098745868551c8d86688ea8b67087eee9c1c1de5e5a63bf97a13cc8dbec"
+    },
+    "mutable": [
+      "launch.json"
+    ]
+  },
+  {
+    "instance_id": "env1",
+    "family": "environment",
+    "phase": 1,
+    "condition": "A",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\env1-A",
+    "prompt": "Diagnose and repair this local Python service launch. Its required marker is 'staging-west'. Run probe.py using the provided interpreter to reproduce and verify. Only launch.json may be changed; do not modify probe.py, service/app.py, or configuration data. The fix must retain the real app execution. This launch/configuration support work recurs; prefer a small diagnosis over replacing the app.",
+    "expected": {
+      "health": "ok",
+      "marker": "staging-west"
+    },
+    "input_hashes": {
+      "service/app.py": "dc976ac57ae0be18817e069aeb30d6403e7a1000c1c1f869e37ffb27d4be6890",
+      "probe.py": "73071ea919c30ecfb755f9574f1a322336281a344287794cbb078719b2eb113d",
+      "service/config/settings.json": "7c2488d65b52dcd772b3e74858dfd9cc89c3fedc433262d9be6708e4a9e95bee",
+      "service/config/settings.dev.json": "184c1cb31d4c0c01531575d59856897d7379a52e22bff4e22e56a7d182de4d64",
+      "launch.json": "399695dc0c7c4b3780098392480d2dd5cd640ddf63336ef0c3ad801c18a41bcd",
+      "task.md": "fbdb35482e510ca845c4b692aeedfda5c6fe4b44713b34eff0ef9e6c736fc1a4"
+    },
+    "mutable": [
+      "launch.json"
+    ]
+  },
+  {
+    "instance_id": "env1",
+    "family": "environment",
+    "phase": 1,
+    "condition": "B",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\env1-B",
+    "prompt": "Diagnose and repair this local Python service launch. Its required marker is 'staging-west'. Run probe.py using the provided interpreter to reproduce and verify. Only launch.json may be changed; do not modify probe.py, service/app.py, or configuration data. The fix must retain the real app execution. This launch/configuration support work recurs; prefer a small diagnosis over replacing the app.",
+    "expected": {
+      "health": "ok",
+      "marker": "staging-west"
+    },
+    "input_hashes": {
+      "service/app.py": "dc976ac57ae0be18817e069aeb30d6403e7a1000c1c1f869e37ffb27d4be6890",
+      "probe.py": "73071ea919c30ecfb755f9574f1a322336281a344287794cbb078719b2eb113d",
+      "service/config/settings.json": "7c2488d65b52dcd772b3e74858dfd9cc89c3fedc433262d9be6708e4a9e95bee",
+      "service/config/settings.dev.json": "184c1cb31d4c0c01531575d59856897d7379a52e22bff4e22e56a7d182de4d64",
+      "launch.json": "399695dc0c7c4b3780098392480d2dd5cd640ddf63336ef0c3ad801c18a41bcd",
+      "task.md": "2f1e2a4857bd7c232c5011eeef470726b7c8f5f9659fa79d6e13800170c5ac1d",
+      "toolseed-guide.md": "17710098745868551c8d86688ea8b67087eee9c1c1de5e5a63bf97a13cc8dbec"
+    },
+    "mutable": [
+      "launch.json"
+    ]
+  },
+  {
+    "instance_id": "env2",
+    "family": "environment",
+    "phase": 2,
+    "condition": "A",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\env2-A",
+    "prompt": "Diagnose and repair this local Python service launch. Its required marker is '北桥'. Run probe.py using the provided interpreter to reproduce and verify. Only launch.json may be changed; do not modify probe.py, service/app.py, or configuration data. The fix must retain the real app execution. This launch/configuration support work recurs; prefer a small diagnosis over replacing the app.",
+    "expected": {
+      "health": "ok",
+      "marker": "北桥"
+    },
+    "input_hashes": {
+      "service/app.py": "dc976ac57ae0be18817e069aeb30d6403e7a1000c1c1f869e37ffb27d4be6890",
+      "probe.py": "73071ea919c30ecfb755f9574f1a322336281a344287794cbb078719b2eb113d",
+      "service/config/settings.json": "23276449dcaaabb560a3350dfaf1e0286d70b94ac946aa1b0ffe983a0e634648",
+      "service/config/settings.dev.json": "184c1cb31d4c0c01531575d59856897d7379a52e22bff4e22e56a7d182de4d64",
+      "launch.json": "2cfee1c3c1fdc397b0c89574e28cc585359ab765993e5b48b99962ab7faecd95",
+      "task.md": "4538a1a7b4706d936a34fff3546503a19b3ad3b7be4fdfb088d28c9b6a894392"
+    },
+    "mutable": [
+      "launch.json"
+    ]
+  },
+  {
+    "instance_id": "env2",
+    "family": "environment",
+    "phase": 2,
+    "condition": "B",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\env2-B",
+    "prompt": "Diagnose and repair this local Python service launch. Its required marker is '北桥'. Run probe.py using the provided interpreter to reproduce and verify. Only launch.json may be changed; do not modify probe.py, service/app.py, or configuration data. The fix must retain the real app execution. This launch/configuration support work recurs; prefer a small diagnosis over replacing the app.",
+    "expected": {
+      "health": "ok",
+      "marker": "北桥"
+    },
+    "input_hashes": {
+      "service/app.py": "dc976ac57ae0be18817e069aeb30d6403e7a1000c1c1f869e37ffb27d4be6890",
+      "probe.py": "73071ea919c30ecfb755f9574f1a322336281a344287794cbb078719b2eb113d",
+      "service/config/settings.json": "23276449dcaaabb560a3350dfaf1e0286d70b94ac946aa1b0ffe983a0e634648",
+      "service/config/settings.dev.json": "184c1cb31d4c0c01531575d59856897d7379a52e22bff4e22e56a7d182de4d64",
+      "launch.json": "2cfee1c3c1fdc397b0c89574e28cc585359ab765993e5b48b99962ab7faecd95",
+      "task.md": "1e2b3aea229300331296ba97462176cc78a486bffd0f6aa9216e713ec53c61a4",
+      "toolseed-guide.md": "17710098745868551c8d86688ea8b67087eee9c1c1de5e5a63bf97a13cc8dbec"
+    },
+    "mutable": [
+      "launch.json"
+    ]
+  },
+  {
+    "instance_id": "data0",
+    "family": "data",
+    "phase": 0,
+    "condition": "A",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\data0-A",
+    "prompt": "Build a repeatable Python conversion of input.csv (CSV with comma delimiter and columns item/amount/status) into output.json. Include only rows whose stripped, case-insensitive status/state is posted. Normalize item/product by strip and casefold. Parse amounts as exact Decimal strings; quantize EACH ROW to 0.01 using ROUND_HALF_UP before grouping. Group by normalized item; sum rounded values and count included rows. Write exactly {\"items\":[{\"item\":string,\"total\":two-decimal-string,\"count\":integer},...]} sorted by item. Preserve inputs. Name the runnable converter solution.py; it must recreate output.json when invoked with no arguments from this directory. Similar conversions recur. A method specialized for a different input layout must not be followed unmodified.",
+    "expected": {
+      "items": [
+        {
+          "item": "apple",
+          "total": "5.99",
+          "count": 2
+        },
+        {
+          "item": "banana",
+          "total": "0.01",
+          "count": 1
+        },
+        {
+          "item": "pear",
+          "total": "2.34",
+          "count": 1
+        }
+      ]
+    },
+    "input_hashes": {
+      "input.csv": "65d503b0ac4943ae29cbc229febb3ebe6bf490a40c669ec8cc1d95787b014528",
+      "task.md": "1bda661de1ab6109777cf8c30bf1e28a486c8678ed33ff8768d516cd09e17688"
+    },
+    "mutable": [
+      "solution.py",
+      "output.json"
+    ]
+  },
+  {
+    "instance_id": "data0",
+    "family": "data",
+    "phase": 0,
+    "condition": "B",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\data0-B",
+    "prompt": "Build a repeatable Python conversion of input.csv (CSV with comma delimiter and columns item/amount/status) into output.json. Include only rows whose stripped, case-insensitive status/state is posted. Normalize item/product by strip and casefold. Parse amounts as exact Decimal strings; quantize EACH ROW to 0.01 using ROUND_HALF_UP before grouping. Group by normalized item; sum rounded values and count included rows. Write exactly {\"items\":[{\"item\":string,\"total\":two-decimal-string,\"count\":integer},...]} sorted by item. Preserve inputs. Name the runnable converter solution.py; it must recreate output.json when invoked with no arguments from this directory. Similar conversions recur. A method specialized for a different input layout must not be followed unmodified.",
+    "expected": {
+      "items": [
+        {
+          "item": "apple",
+          "total": "5.99",
+          "count": 2
+        },
+        {
+          "item": "banana",
+          "total": "0.01",
+          "count": 1
+        },
+        {
+          "item": "pear",
+          "total": "2.34",
+          "count": 1
+        }
+      ]
+    },
+    "input_hashes": {
+      "input.csv": "65d503b0ac4943ae29cbc229febb3ebe6bf490a40c669ec8cc1d95787b014528",
+      "task.md": "5c262355039bc64a577c4ad9afe16c2384fa6722b7680b4460b5c92a3359f8e3",
+      "toolseed-guide.md": "17710098745868551c8d86688ea8b67087eee9c1c1de5e5a63bf97a13cc8dbec"
+    },
+    "mutable": [
+      "solution.py",
+      "output.json"
+    ]
+  },
+  {
+    "instance_id": "data1",
+    "family": "data",
+    "phase": 1,
+    "condition": "A",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\data1-A",
+    "prompt": "Build a repeatable Python conversion of input.csv (CSV with semicolon delimiter and equivalent columns product/value/state) into output.json. Include only rows whose stripped, case-insensitive status/state is posted. Normalize item/product by strip and casefold. Parse amounts as exact Decimal strings; quantize EACH ROW to 0.01 using ROUND_HALF_UP before grouping. Group by normalized item; sum rounded values and count included rows. Write exactly {\"items\":[{\"item\":string,\"total\":two-decimal-string,\"count\":integer},...]} sorted by item. Preserve inputs. Name the runnable converter solution.py; it must recreate output.json when invoked with no arguments from this directory. Similar conversions recur. A method specialized for a different input layout must not be followed unmodified.",
+    "expected": {
+      "items": [
+        {
+          "item": "apple",
+          "total": "1.01",
+          "count": 1
+        },
+        {
+          "item": "banana",
+          "total": "0.00",
+          "count": 1
+        },
+        {
+          "item": "pear",
+          "total": "12.34",
+          "count": 2
+        }
+      ]
+    },
+    "input_hashes": {
+      "input.csv": "a7b13fb3a998afc7336f311763f85bc7979911cb5f617de12d8b02ee17bff409",
+      "task.md": "4b47e0ce9b2901640c8915d3a58a79fafacf3a48e0868f0aa20d03f668a3da10"
+    },
+    "mutable": [
+      "solution.py",
+      "output.json"
+    ]
+  },
+  {
+    "instance_id": "data1",
+    "family": "data",
+    "phase": 1,
+    "condition": "B",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\data1-B",
+    "prompt": "Build a repeatable Python conversion of input.csv (CSV with semicolon delimiter and equivalent columns product/value/state) into output.json. Include only rows whose stripped, case-insensitive status/state is posted. Normalize item/product by strip and casefold. Parse amounts as exact Decimal strings; quantize EACH ROW to 0.01 using ROUND_HALF_UP before grouping. Group by normalized item; sum rounded values and count included rows. Write exactly {\"items\":[{\"item\":string,\"total\":two-decimal-string,\"count\":integer},...]} sorted by item. Preserve inputs. Name the runnable converter solution.py; it must recreate output.json when invoked with no arguments from this directory. Similar conversions recur. A method specialized for a different input layout must not be followed unmodified.",
+    "expected": {
+      "items": [
+        {
+          "item": "apple",
+          "total": "1.01",
+          "count": 1
+        },
+        {
+          "item": "banana",
+          "total": "0.00",
+          "count": 1
+        },
+        {
+          "item": "pear",
+          "total": "12.34",
+          "count": 2
+        }
+      ]
+    },
+    "input_hashes": {
+      "input.csv": "a7b13fb3a998afc7336f311763f85bc7979911cb5f617de12d8b02ee17bff409",
+      "task.md": "f0a6bbb5fa5acd064087cd7463f1068ed38d47ab47103678bd30b20a1e8cb4b9",
+      "toolseed-guide.md": "17710098745868551c8d86688ea8b67087eee9c1c1de5e5a63bf97a13cc8dbec"
+    },
+    "mutable": [
+      "solution.py",
+      "output.json"
+    ]
+  },
+  {
+    "instance_id": "data2",
+    "family": "data",
+    "phase": 2,
+    "condition": "A",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\data2-A",
+    "prompt": "Build a repeatable Python conversion of input.json (nested JSON batches[].records[] using product, money.amount, and state) into output.json. Include only rows whose stripped, case-insensitive status/state is posted. Normalize item/product by strip and casefold. Parse amounts as exact Decimal strings; quantize EACH ROW to 0.01 using ROUND_HALF_UP before grouping. Group by normalized item; sum rounded values and count included rows. Write exactly {\"items\":[{\"item\":string,\"total\":two-decimal-string,\"count\":integer},...]} sorted by item. Preserve inputs. Name the runnable converter solution.py; it must recreate output.json when invoked with no arguments from this directory. Similar conversions recur. A method specialized for a different input layout must not be followed unmodified.",
+    "expected": {
+      "items": [
+        {
+          "item": "apple",
+          "total": "8.01",
+          "count": 2
+        },
+        {
+          "item": "pear",
+          "total": "-2.35",
+          "count": 1
+        }
+      ]
+    },
+    "input_hashes": {
+      "input.json": "8b2d725810677ac1bcb3bc48febdb859a7bbacd1310e80b045246a8d2c8363d7",
+      "task.md": "9e29b570e20b589729d591ac2579759309e177a37a6e03e3269dc98d51ed1d65"
+    },
+    "mutable": [
+      "solution.py",
+      "output.json"
+    ]
+  },
+  {
+    "instance_id": "data2",
+    "family": "data",
+    "phase": 2,
+    "condition": "B",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\data2-B",
+    "prompt": "Build a repeatable Python conversion of input.json (nested JSON batches[].records[] using product, money.amount, and state) into output.json. Include only rows whose stripped, case-insensitive status/state is posted. Normalize item/product by strip and casefold. Parse amounts as exact Decimal strings; quantize EACH ROW to 0.01 using ROUND_HALF_UP before grouping. Group by normalized item; sum rounded values and count included rows. Write exactly {\"items\":[{\"item\":string,\"total\":two-decimal-string,\"count\":integer},...]} sorted by item. Preserve inputs. Name the runnable converter solution.py; it must recreate output.json when invoked with no arguments from this directory. Similar conversions recur. A method specialized for a different input layout must not be followed unmodified.",
+    "expected": {
+      "items": [
+        {
+          "item": "apple",
+          "total": "8.01",
+          "count": 2
+        },
+        {
+          "item": "pear",
+          "total": "-2.35",
+          "count": 1
+        }
+      ]
+    },
+    "input_hashes": {
+      "input.json": "8b2d725810677ac1bcb3bc48febdb859a7bbacd1310e80b045246a8d2c8363d7",
+      "task.md": "d0d6a79d13cf780868ac96671372c1653538c02a528950a6d433a453247290cc",
+      "toolseed-guide.md": "17710098745868551c8d86688ea8b67087eee9c1c1de5e5a63bf97a13cc8dbec"
+    },
+    "mutable": [
+      "solution.py",
+      "output.json"
+    ]
+  },
+  {
+    "instance_id": "debug0",
+    "family": "debug",
+    "phase": 0,
+    "condition": "A",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\debug0-A",
+    "prompt": "Reproduce and fix the real failure in smoke_test.py by changing only component.py. build_readers(labels) returns zero-argument readers, each preserving its own label captured during construction, even after the loop finishes. Calls must not change other readers. Preserve the public function name and the smoke test. Validate behavior, including empty input or independent repeated calls where applicable. Similar Python behavior bugs recur. Do not assume all failures in this family have the same cause.",
+    "expected": {
+      "contract": "build_readers(labels) returns zero-argument readers, each preserving its own label captured during construction, even after the loop finishes. Calls must not change other readers."
+    },
+    "input_hashes": {
+      "component.py": "5f2724323c5ae59e8249e498c2a7ca9230db6779bb03973c9236d2dbebef7140",
+      "smoke_test.py": "62fa94ba99598412b1e2e1e77fe77f447068af4665cd71717e185bcba6e08151",
+      "task.md": "9898bc5e5e5dbede68fa83155e6f30ec978d36f972a3b0ca8100a837e80c3f20"
+    },
+    "mutable": [
+      "component.py"
+    ]
+  },
+  {
+    "instance_id": "debug0",
+    "family": "debug",
+    "phase": 0,
+    "condition": "B",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\debug0-B",
+    "prompt": "Reproduce and fix the real failure in smoke_test.py by changing only component.py. build_readers(labels) returns zero-argument readers, each preserving its own label captured during construction, even after the loop finishes. Calls must not change other readers. Preserve the public function name and the smoke test. Validate behavior, including empty input or independent repeated calls where applicable. Similar Python behavior bugs recur. Do not assume all failures in this family have the same cause.",
+    "expected": {
+      "contract": "build_readers(labels) returns zero-argument readers, each preserving its own label captured during construction, even after the loop finishes. Calls must not change other readers."
+    },
+    "input_hashes": {
+      "component.py": "5f2724323c5ae59e8249e498c2a7ca9230db6779bb03973c9236d2dbebef7140",
+      "smoke_test.py": "62fa94ba99598412b1e2e1e77fe77f447068af4665cd71717e185bcba6e08151",
+      "task.md": "140b0a315f47d88666bc8f2a3c57d38fb548036f60ef5710d1f6bf1ef41d42cd",
+      "toolseed-guide.md": "17710098745868551c8d86688ea8b67087eee9c1c1de5e5a63bf97a13cc8dbec"
+    },
+    "mutable": [
+      "component.py"
+    ]
+  },
+  {
+    "instance_id": "debug1",
+    "family": "debug",
+    "phase": 1,
+    "condition": "A",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\debug1-A",
+    "prompt": "Reproduce and fix the real failure in smoke_test.py by changing only component.py. bind_ops(pairs) returns a dictionary of unary operations. Each operation adds the offset belonging to its own name; repeated names use the last pair. Previously created dictionaries must not be changed by later calls. Preserve the public function name and the smoke test. Validate behavior, including empty input or independent repeated calls where applicable. Similar Python behavior bugs recur. Do not assume all failures in this family have the same cause.",
+    "expected": {
+      "contract": "bind_ops(pairs) returns a dictionary of unary operations. Each operation adds the offset belonging to its own name; repeated names use the last pair. Previously created dictionaries must not be changed by later calls."
+    },
+    "input_hashes": {
+      "component.py": "0c9ebe069301328f208bfb6ecdc320cc415a816022f2c191cc0a8ff980cafe05",
+      "smoke_test.py": "fd911fabe3032867944cd62728bbe1030f5c6e0bb9bbf7c5fa76ee07876aaa87",
+      "task.md": "bd661be8857a9eb03d399edbe7ec4cb7eff90d39ce13a0010d3fc331da40f7b1"
+    },
+    "mutable": [
+      "component.py"
+    ]
+  },
+  {
+    "instance_id": "debug1",
+    "family": "debug",
+    "phase": 1,
+    "condition": "B",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\debug1-B",
+    "prompt": "Reproduce and fix the real failure in smoke_test.py by changing only component.py. bind_ops(pairs) returns a dictionary of unary operations. Each operation adds the offset belonging to its own name; repeated names use the last pair. Previously created dictionaries must not be changed by later calls. Preserve the public function name and the smoke test. Validate behavior, including empty input or independent repeated calls where applicable. Similar Python behavior bugs recur. Do not assume all failures in this family have the same cause.",
+    "expected": {
+      "contract": "bind_ops(pairs) returns a dictionary of unary operations. Each operation adds the offset belonging to its own name; repeated names use the last pair. Previously created dictionaries must not be changed by later calls."
+    },
+    "input_hashes": {
+      "component.py": "0c9ebe069301328f208bfb6ecdc320cc415a816022f2c191cc0a8ff980cafe05",
+      "smoke_test.py": "fd911fabe3032867944cd62728bbe1030f5c6e0bb9bbf7c5fa76ee07876aaa87",
+      "task.md": "f6ed6ada381606df2af2461b6ceb55457673b290108ea9d971833f6a1b5858fd",
+      "toolseed-guide.md": "17710098745868551c8d86688ea8b67087eee9c1c1de5e5a63bf97a13cc8dbec"
+    },
+    "mutable": [
+      "component.py"
+    ]
+  },
+  {
+    "instance_id": "debug2",
+    "family": "debug",
+    "phase": 2,
+    "condition": "A",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\debug2-A",
+    "prompt": "Reproduce and fix the real failure in smoke_test.py by changing only component.py. push(label, history=None) starts a fresh list when history is omitted or None. An explicitly provided list is appended in place and returned by identity. Unrelated calls must not share state. Preserve the public function name and the smoke test. Validate behavior, including empty input or independent repeated calls where applicable. Similar Python behavior bugs recur. Do not assume all failures in this family have the same cause.",
+    "expected": {
+      "contract": "push(label, history=None) starts a fresh list when history is omitted or None. An explicitly provided list is appended in place and returned by identity. Unrelated calls must not share state."
+    },
+    "input_hashes": {
+      "component.py": "dc63ac5f065f4441590e3dd12bac12c48fa74ba3135d42093928ba275bbd58bc",
+      "smoke_test.py": "e2e8c0bfa86668a71d3f447ae063a4008c2fca4e5247c4c9b297d0f8c943ef92",
+      "task.md": "a882df08dc24ecd81c799f3dfb46dfd4e4f274041177feda11f68d3db3fdd725"
+    },
+    "mutable": [
+      "component.py"
+    ]
+  },
+  {
+    "instance_id": "debug2",
+    "family": "debug",
+    "phase": 2,
+    "condition": "B",
+    "folder": "F:\\ToolSeed\\.test-data-agent-value-main\\tasks\\debug2-B",
+    "prompt": "Reproduce and fix the real failure in smoke_test.py by changing only component.py. push(label, history=None) starts a fresh list when history is omitted or None. An explicitly provided list is appended in place and returned by identity. Unrelated calls must not share state. Preserve the public function name and the smoke test. Validate behavior, including empty input or independent repeated calls where applicable. Similar Python behavior bugs recur. Do not assume all failures in this family have the same cause.",
+    "expected": {
+      "contract": "push(label, history=None) starts a fresh list when history is omitted or None. An explicitly provided list is appended in place and returned by identity. Unrelated calls must not share state."
+    },
+    "input_hashes": {
+      "component.py": "dc63ac5f065f4441590e3dd12bac12c48fa74ba3135d42093928ba275bbd58bc",
+      "smoke_test.py": "e2e8c0bfa86668a71d3f447ae063a4008c2fca4e5247c4c9b297d0f8c943ef92",
+      "task.md": "cd21659eefca6a3f5e22cd7d190d56e635fd23cf731dd83156e1c0918fba0bab",
+      "toolseed-guide.md": "17710098745868551c8d86688ea8b67087eee9c1c1de5e5a63bf97a13cc8dbec"
+    },
+    "mutable": [
+      "component.py"
+    ]
+  }
+]

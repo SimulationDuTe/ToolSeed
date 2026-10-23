@@ -1,0 +1,123 @@
+{
+  "files": [
+    {
+      "file": "artifact-index.json",
+      "sha256": "cef23f51204907771445bc5b21c248956d95ac3db7717b8ee58e0b451317fa1c",
+      "credential_pattern_counts": {
+        "private_key": 0,
+        "bearer_credential": 0,
+        "api_key_value": 0,
+        "key_prefix": 0
+      },
+      "host_path_references": 1,
+      "uuid_references": 0
+    },
+    {
+      "file": "feasibility-records.jsonl",
+      "sha256": "2ded47143abe3e6336beec6a2d28b9f259bc751780eeb0b7b91cdba0ba83c1a1",
+      "credential_pattern_counts": {
+        "private_key": 0,
+        "bearer_credential": 0,
+        "api_key_value": 0,
+        "key_prefix": 0
+      },
+      "host_path_references": 29,
+      "uuid_references": 0
+    },
+    {
+      "file": "interruptions.md",
+      "sha256": "a606e616bdaae8000675906b8d20eddcaf2878bc607e6b11e5f848069aa8023f",
+      "credential_pattern_counts": {
+        "private_key": 0,
+        "bearer_credential": 0,
+        "api_key_value": 0,
+        "key_prefix": 0
+      },
+      "host_path_references": 0,
+      "uuid_references": 0
+    },
+    {
+      "file": "per-task.csv",
+      "sha256": "1be531a32bddecb528c66690f56b310637e20208a2613dc0bad0a4969d74f43c",
+      "credential_pattern_counts": {
+        "private_key": 0,
+        "bearer_credential": 0,
+        "api_key_value": 0,
+        "key_prefix": 0
+      },
+      "host_path_references": 0,
+      "uuid_references": 0
+    },
+    {
+      "file": "preregistration.md",
+      "sha256": "85b7d01d74fa89f9ee64d568383d3e40d844d56581a5b39141db6bc2a49f7596",
+      "credential_pattern_counts": {
+        "private_key": 0,
+        "bearer_credential": 0,
+        "api_key_value": 0,
+        "key_prefix": 0
+      },
+      "host_path_references": 0,
+      "uuid_references": 0
+    },
+    {
+      "file": "records.jsonl",
+      "sha256": "377b59c6fd24813e201282ff89c81d29148867157bb7fbcfcf46185e76e23c92",
+      "credential_pattern_counts": {
+        "private_key": 0,
+        "bearer_credential": 0,
+        "api_key_value": 0,
+        "key_prefix": 0
+      },
+      "host_path_references": 103,
+      "uuid_references": 0
+    },
+    {
+      "file": "REPORT.md",
+      "sha256": "bb00f7dd02ba3c0f080fec5b2682bc5232edf928c386ce5b5b061fb9db149723",
+      "credential_pattern_counts": {
+        "private_key": 0,
+        "bearer_credential": 0,
+        "api_key_value": 0,
+        "key_prefix": 0
+      },
+      "host_path_references": 0,
+      "uuid_references": 0
+    },
+    {
+      "file": "summary.json",
+      "sha256": "98de91555b135804e3491d0d82b6b72359764f4b508aaa8f8dc473a33bd49fe3",
+      "credential_pattern_counts": {
+        "private_key": 0,
+        "bearer_credential": 0,
+        "api_key_value": 0,
+        "key_prefix": 0
+      },
+      "host_path_references": 0,
+      "uuid_references": 0
+    },
+    {
+      "file": "task-spec.json",
+      "sha256": "a5ddeba113b62d2a419760fe69840adced7dfb82c7a0d8c924356480f3e420a5",
+      "credential_pattern_counts": {
+        "private_key": 0,
+        "bearer_credential": 0,
+        "api_key_value": 0,
+        "key_prefix": 0
+      },
+      "host_path_references": 18,
+      "uuid_references": 0
+    }
+  ],
+  "structure": {
+    "primary_records": 18,
+    "feasibility_records": 6,
+    "task_specs": 18,
+    "csv_rows": 18,
+    "token_telemetry_missing_rows": 18,
+    "complete_tool_ledger_missing_rows": 18,
+    "infrastructure_interrupted_tasks": 8,
+    "reported_net_benefit": "unknown"
+  },
+  "scope": "Only the nine result files; regex screening is not a proof of absence of secrets. Raw ZIP contents not fully privacy-audited."
+}

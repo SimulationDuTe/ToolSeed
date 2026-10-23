@@ -1,0 +1,38 @@
+{
+  "measurement_admission": "PARTIAL",
+  "target_route": {
+    "provider": "openai-codex",
+    "model": "gpt-6.1-sol",
+    "route_changed": false
+  },
+  "scope": "Existing approved metadata for the 18 primary sessions only; no new model calls or account queries",
+  "independent_server_usage_evidence": "not_provided_in_authorized_material",
+  "normal_settlements": 259,
+  "normal_settlements_with_response_id_in_projection": 259,
+  "failed_usage_unavailable": 54,
+  "failed_settlements_with_response_id_in_projection": 0,
+  "confirmed_failed_actual_usage_cases": 0,
+  "confirmed_failed_actual_usage_cases_note": "Zero verified cases, not a claim that zero failures consumed tokens",
+  "explicit_retry_links": 45,
+  "closed_without_explicit_retry": 9,
+  "failed_zero_usage_with_stream_activity": 5,
+  "failure_codes": {
+    "PI_AI_ERROR": 6,
+    "TRANSPORT": 48
+  },
+  "physical_request_count": "unknown",
+  "implicit_transport_fallback_count": "unknown",
+  "cancelled_usage": "unknown",
+  "historical_full_cost": "unknown",
+  "historical_reconciliation_possible_from_current_evidence": false,
+  "search_stopped": true,
+  "search_stop_reason": "No authorized server-side request-level ledger or narrow export was supplied; do not expand into accounts, credentials, unrelated logs or runtime memory",
+  "canary_for_recovering_historical_usage": "not_recommended_cannot_recover_missing_historical_receipts",
+  "new_canary_executed": false,
+  "limitations": [
+    "Normalized SDK records are not independent server receipts",
+    "Identifier absence is scoped to the existing approved projection, not every possible platform record",
+    "Timing alone cannot establish a unique physical-request match",
+    "No private payloads/free-form error messages or provider account data were inspected"
+  ]
+}
