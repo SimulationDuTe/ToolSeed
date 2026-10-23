@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>ToolSeed · 本地能力面板</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body class="ts-panel">
+  <a class="skip-link" href="#main">跳至主内容</a>
+  <div class="web-shell">
+    <header class="web-header"><div><h1>ToolSeed</h1><p>查看已保存的方法与最近的活动</p></div><div><span id="sync-status" role="status">正在读取…</span> <button id="refresh" class="button" type="button">刷新</button></div></header>
+    <nav aria-label="主导航">
+      <div class="web-tabs"><a href="#capabilities" data-page="capabilities">已入库能力</a><a href="#activity" data-page="activity">活动</a></div>
+    </nav>
+    <div id="summary"></div>
+    <main id="main" tabindex="-1" aria-busy="true"><div class="web-toolbar"><h2 id="page-title">已入库能力</h2><label id="search-box"><input id="search" type="search" aria-label="搜索能力" placeholder="搜索名称、说明或适用场景"></label></div><p id="activity-focus" class="ts-muted"></p><button id="clear-focus" class="button" hidden>查看全部活动</button><p id="catalog-note" class="ts-note" hidden>能力库正在更新，部分结果可能稍后显示。</p><p id="read-error" role="alert" hidden></p><div id="records"></div><div id="pagination" class="web-pagination"><span id="page-range"></span><button id="previous" class="button">上一页</button><button id="next" class="button">下一页</button></div></main>
+  </div>
+  <dialog id="detail" class="web-dialog" aria-labelledby="detail-title"><div class="dialog-header"><h2 id="detail-title">详情</h2><button id="close-detail" class="button" aria-label="关闭详情">关闭</button></div><div id="detail-body"></div></dialog>
+</body>
+</html>

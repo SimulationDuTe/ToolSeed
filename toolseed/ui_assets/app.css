@@ -1,0 +1,82 @@
+:root { --ts-text:#24272c;--ts-muted:#656b75;--ts-line:#e0e3e7;--ts-hover:#f2f3f5;--ts-accent:#275db8;--ts-warning:#8b6518;--ts-success:#34734e;--ts-font:system-ui,"Microsoft YaHei",sans-serif;--ts-code:ui-monospace,monospace;color:var(--ts-text);background:#fafbfc;font:14px/1.6 var(--ts-font) }
+* { box-sizing:border-box }
+body { margin:0 }
+.web-shell { max-width:1040px;margin:auto;padding:32px 24px }
+.web-header,.web-tabs,.web-toolbar,.web-pagination { display:flex;align-items:center;gap:16px;flex-wrap:wrap }
+.web-header { justify-content:space-between;margin-bottom:20px }
+.web-header h1 { margin:0;font-size:20px }
+.web-header p { margin:0;color:var(--ts-muted) }
+.web-tabs { border-bottom:1px solid var(--ts-line);margin-bottom:20px }
+.web-tabs a { padding:10px 0;color:var(--ts-muted);text-decoration:none;border-bottom:2px solid transparent }
+.web-tabs a.active { border-color:var(--ts-text);color:var(--ts-text);font-weight:600 }
+.web-toolbar { justify-content:space-between;margin-block:20px }
+.web-toolbar h2 { font-size:18px;margin:0 }
+.web-toolbar input { width:min(380px,100%);max-width:100%;padding:9px 12px;border:1px solid var(--ts-line);border-radius:8px;font:inherit;color:inherit;background:transparent }
+.web-pagination { justify-content:flex-end;margin-block:20px }
+.button { border:1px solid var(--ts-line);border-radius:7px;padding:6px 12px;background:transparent;color:inherit;font:inherit;cursor:pointer }
+.button:disabled { opacity:.45;cursor:default }
+.button:hover:not(:disabled) { background:var(--ts-hover) }
+#read-error { padding:12px 0;color:var(--ts-warning) }
+.web-dialog { width:min(760px,94vw);max-height:88vh;padding:0;border:1px solid var(--ts-line);border-radius:12px;color:var(--ts-text);background:#fafbfc }
+.web-dialog::backdrop { background:#0006 }
+.dialog-header { display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:20px;border-bottom:1px solid var(--ts-line) }
+.dialog-header h2 { font:inherit;font-weight:600;margin:0;overflow-wrap:anywhere }
+#detail-body { padding:20px }
+[hidden] { display:none!important }
+.skip-link { position:absolute;left:-10000px }
+.skip-link:focus { left:16px;top:0 }
+/* TOOLSEED_SHARED_STYLES_START */
+.ts-panel { min-width:0;color:var(--ts-text);font-family:var(--ts-font);line-height:1.6 }
+.ts-panel .ts-summary { display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;font-size:.95em;padding:.7rem 0;color:var(--ts-muted) }
+.ts-panel .ts-summary strong { color:var(--ts-text);font-weight:600 }
+.ts-panel .ts-record-list { display:flex;flex-direction:column;gap:.75rem }
+.ts-panel .ts-record-card { min-width:0;border:1px solid var(--ts-line);border-radius:.6rem;overflow:hidden }
+.ts-panel .ts-record-open { display:flex;flex-direction:column;gap:.6rem;text-align:left;width:100%;border:0;padding:1rem;background:transparent;color:inherit;font:inherit;cursor:pointer }
+.ts-panel .ts-record-open:hover { background:var(--ts-hover) }
+.ts-panel .ts-record-open:focus-visible,.ts-panel .ts-text-button:focus-visible { outline:2px solid var(--ts-accent);outline-offset:-3px }
+.ts-panel .ts-record-head { display:flex;justify-content:space-between;align-items:flex-start;gap:.6rem 1rem;flex-wrap:wrap;width:100%;min-width:0 }
+.ts-panel .ts-card-title { flex:1 1 14rem;min-width:0;font-weight:600;line-height:1.5;overflow-wrap:anywhere }
+.ts-panel .ts-tags { display:flex;flex-wrap:wrap;gap:.35rem;flex:0 0 auto;align-items:center }
+.ts-panel .ts-tag { display:inline-flex;align-items:center;white-space:nowrap;border:1px solid var(--ts-line);border-radius:.35rem;padding:.08rem .45rem;font-size:.85em;line-height:1.7;color:var(--ts-muted) }
+.ts-panel .ts-available { color:var(--ts-success) }
+.ts-panel .ts-warning,.ts-panel .ts-test { color:var(--ts-warning) }
+.ts-panel .ts-description,.ts-panel .ts-scenario { color:var(--ts-muted);overflow-wrap:anywhere;max-width:100%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden }
+.ts-panel .ts-scenario { font-size:.93em }
+.ts-panel .ts-record-hint { color:var(--ts-accent);font-size:.88em }
+.ts-panel .ts-record-foot { display:flex;gap:.5rem;justify-content:space-between;align-items:center;width:100% }
+.ts-panel .ts-time { color:var(--ts-muted);font-size:.88em;white-space:nowrap;flex:none;padding-top:.1rem }
+.ts-panel .ts-muted,.ts-panel .ts-note { color:var(--ts-muted) }
+.ts-panel .ts-note { font-size:.9em;margin:.7rem 0 }
+.ts-panel .ts-empty { padding:1.5rem .25rem;color:var(--ts-muted) }
+.ts-panel .ts-empty h3 { font:inherit;font-weight:600;color:var(--ts-text) }
+.ts-panel .ts-empty p { margin:.6rem 0 }
+.ts-panel .ts-detail-intro { margin-bottom:1rem }
+.ts-panel .ts-detail-intro p { margin:.7rem 0;overflow-wrap:anywhere }
+.ts-panel .ts-facts { display:grid;gap:.85rem;margin:0 }
+.ts-panel .ts-field { display:grid;grid-template-columns:minmax(7rem,auto) minmax(0,1fr);gap:.5rem 1rem }
+.ts-panel .ts-field dt { color:var(--ts-muted) }
+.ts-panel .ts-field dd { margin:0;overflow-wrap:anywhere;min-width:0 }
+.ts-panel .ts-detail-section,.ts-panel .ts-advanced { padding-top:1rem;margin-top:1rem;border-top:1px solid var(--ts-line) }
+.ts-panel .ts-detail-section h3 { margin:0 0 .8rem;font:inherit;font-weight:600 }
+.ts-panel .ts-detail-section summary,.ts-panel .ts-advanced summary { cursor:pointer;font-weight:500;overflow-wrap:anywhere }
+.ts-panel details[open]>summary { margin-bottom:.85rem }
+.ts-panel .ts-version,.ts-panel .ts-evidence { padding:.8rem 0;border-bottom:1px solid var(--ts-line) }
+.ts-panel .ts-version h4 { font:inherit;font-weight:600;margin:0 0 .5rem }
+.ts-panel .ts-version p,.ts-panel .ts-evidence p { margin:.4rem 0;overflow-wrap:anywhere }
+.ts-panel pre { font-family:var(--ts-code);font-size:var(--ts-code-size, .9em);white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;padding:.8rem;border:1px solid var(--ts-line);border-radius:.4rem;line-height:1.6 }
+.ts-panel .ts-text-button { background:transparent;border:0;padding:0;color:var(--ts-accent);font:inherit;text-align:inherit;cursor:pointer;overflow-wrap:anywhere }
+.ts-panel .ts-text-button:hover { text-decoration:underline }
+@media(max-width:600px) {
+  .ts-panel .ts-record-open { padding:.85rem }
+  .ts-panel .ts-card-title { flex-basis:100% }
+  .ts-panel .ts-field { grid-template-columns:1fr;gap:.2rem }
+  .ts-panel .ts-summary { gap:.35rem 1rem }
+}
+/* TOOLSEED_SHARED_STYLES_END */
+@media(max-width:600px) {
+  .web-shell { padding:20px 16px }
+  .web-toolbar { align-items:stretch }
+  #search-box { width:100% }
+  .web-toolbar input { width:100% }
+  .dialog-header,#detail-body { padding:16px }
+}
