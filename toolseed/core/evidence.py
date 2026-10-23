@@ -52,6 +52,7 @@ EVENT_VERSION_VERIFICATION = "version_verification"
 
 REVALIDATION_EVENT_TYPES = (EVENT_DELIVERED, EVENT_TASK_OUTCOME, EVENT_VERSION_VERIFICATION)
 EVENT_DUPLICATE = "duplicate_save"
+EVENT_TOOL_FAILED = "tool_call_failed"
 
 ACTION_REVALIDATE_EVIDENCE = "revalidate_evidence"
 # A revalidate_evidence decision freezes this key to the assessment-table offset it
@@ -267,6 +268,13 @@ class Evidence:
         ).fetchone()
         return row is not None
 
+    def is_activity_only(self, event_id: str) -> bool:
+        """Failed tool calls are audit activity, not assessable capability evidence."""
+        return self.store.db.execute(
+            "SELECT 1 FROM evidence_events WHERE event_id = ? AND event_type = ?",
+            (event_id, EVENT_TOOL_FAILED),
+        ).fetchone() is not None
+
     def assess(
         self,
         evidence_id: str,
@@ -279,6 +287,8 @@ class Evidence:
     ) -> dict[str, Any]:
         if validity not in VALIDITIES:
             raise ValueError(f"unsupported validity: {validity}")
+        if self.is_activity_only(evidence_id):
+            raise ValueError("tool call activity is not assessable capability evidence")
         assessment_id = new_id("eva")
         assessed_at = now()
         with self.store.transaction() as db:
@@ -322,13 +332,17 @@ class Evidence:
         and never by `assessed_at`, which is a reported wall clock that can repeat or
         step backwards. Ordering by the clock lets an older `valid` assessment mask a
         newer `stale`/`superseded` one, and this projection is exactly what the
-        promotion gate and the revalidation gate read. `validity_counts()` already
+        promotion gate and the revalidation gate read. Activity-only events have no
+        validity projection, even if old assessment rows exist; assessments() keeps
+        that history readable. `validity_counts()` already
         projects with MAX(rowid), so this keeps both projections agreeing.
         """
         row = self.store.db.execute(
-            "SELECT * FROM evidence_validity_assessments "
-            "WHERE evidence_id = ? ORDER BY rowid DESC LIMIT 1",
-            (evidence_id,),
+            "SELECT a.* FROM evidence_validity_assessments a "
+            "WHERE a.evidence_id = ? AND NOT EXISTS "
+            "(SELECT 1 FROM evidence_events e WHERE e.event_id = a.evidence_id AND e.event_type = ?) "
+            "ORDER BY a.rowid DESC LIMIT 1",
+            (evidence_id, EVENT_TOOL_FAILED),
         ).fetchone()
         return self._assessment_dict(row) if row is not None else None
 
@@ -336,10 +350,11 @@ class Evidence:
         """The recorded assessment history for `evidence_id`, oldest first.
 
         Ordered by rowid -- the same insertion order `latest_assessment()` projects from
-        -- so the last entry is always the current validity. `assessed_at` is reported on
+        -- so the last entry is the latest declaration. `assessed_at` is reported on
         every entry but never orders them: under a backwards clock a timestamp-ordered
         list would place its newest entry somewhere other than the end, which is exactly
-        the reading this list must not invite.
+        the reading this list must not invite. Activity-only assessment history is retained
+        for audit but does not produce a current evidence-validity projection.
         """
         rows = self.store.db.execute(
             "SELECT * FROM evidence_validity_assessments "
@@ -382,6 +397,9 @@ class Evidence:
         )
 
     def validity_counts(self) -> dict[str, int]:
+        # Preserve the existing projection/counting rules for every original event
+        # type. Only the newly introduced activity-only type is outside this scope.
+        # In particular, do not change orphan handling or the existing clamp here.
         counts = {validity: 0 for validity in VALIDITIES}
         rows = self.store.db.execute(
             "SELECT a.validity AS validity, COUNT(*) AS n "
@@ -389,12 +407,19 @@ class Evidence:
             "JOIN (SELECT evidence_id, MAX(rowid) AS max_id "
             "      FROM evidence_validity_assessments GROUP BY evidence_id) latest "
             "  ON a.rowid = latest.max_id "
-            "GROUP BY a.validity"
+            "WHERE NOT EXISTS (SELECT 1 FROM evidence_events e "
+            "                  WHERE e.event_id = a.evidence_id AND e.event_type = ?) "
+            "GROUP BY a.validity",
+            (EVENT_TOOL_FAILED,),
         ).fetchall()
         for row in rows:
             counts[row["validity"]] = int(row["n"])
         assessed = sum(counts.values())
-        counts["unassessed"] = max(0, self.total_events() - assessed)
+        assessable_events = int(self.store.db.execute(
+            "SELECT COUNT(*) AS n FROM evidence_events WHERE event_type <> ?",
+            (EVENT_TOOL_FAILED,),
+        ).fetchone()["n"])
+        counts["unassessed"] = max(0, assessable_events - assessed)
         return counts
 
     def version_fingerprint(self, version_id: str) -> dict[str, Any] | None:
@@ -428,8 +453,9 @@ class Evidence:
         if fingerprint is None:
             return 0
         rows = self.store.db.execute(
-            "SELECT event_id FROM evidence_events WHERE version_id = ? ORDER BY rowid",
-            (version_id,),
+            "SELECT event_id FROM evidence_events WHERE version_id = ? AND event_type <> ? "
+            "ORDER BY rowid",
+            (version_id, EVENT_TOOL_FAILED),
         ).fetchall()
         changed = 0
         for row in rows:
@@ -962,7 +988,8 @@ class Evidence:
         validity = {validity: 0 for validity in VALIDITIES}
         validity["unassessed"] = 0
         for row in self.store.db.execute(
-            "SELECT event_id FROM evidence_events WHERE version_id = ?", (version_id,)
+            "SELECT event_id FROM evidence_events WHERE version_id = ? AND event_type <> ?",
+            (version_id, EVENT_TOOL_FAILED),
         ).fetchall():
             latest = self.latest_assessment(row["event_id"])
             if latest is None:

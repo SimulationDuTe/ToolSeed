@@ -13,6 +13,7 @@ dependencies = ["mcp>=2.3,<3"]
 [project.scripts]
 toolseed = "toolseed.cli:main"
 toolseed-mcp = "toolseed.mcp_server:main"
+toolseed-ui = "toolseed.ui:main"
 
 [project.optional-dependencies]
 dev = [
@@ -35,4 +36,4 @@ ignore_missing_imports = true
 packages = ["toolseed", "toolseed.core", "toolseed.adapters"]
 
 [tool.setuptools.package-data]
-toolseed = ["skill/*.md"]
+toolseed = ["skill/*.md", "ui_assets/*.html", "ui_assets/*.css", "ui_assets/*.js"]

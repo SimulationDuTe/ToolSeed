@@ -1,6 +1,11 @@
 # ToolSeed Alpha 状态说明
 
-日期：2026-10-21。版本 `0.4.0`。基线提交 `c0cac122c1a149e3f6c1a2501a683db323fc5131`。
+> P1-A 本地开发增量（2026-10-22，未发布）：已加入 DSH 0.2.1-rc.2 的重复结构化失败信号与
+> 单次 L1 机会提示。隔离的真实宿主运行时、MCP 和脚本驱动验证了信号、提示提交、检索及保存失败恢复；
+> 真实模型的主动发现、实际采用、已验证方法沉淀和净收益仍未验收。详见 [P1-A.md](P1-A.md)。
+
+日期：2026-10-22。当前包版本 `0.4.1`；本地交互层开发以已发布的 v0.4.1
+（`5786f47`）为基线，尚未提交或发布，不代表历史 Release 已包含以下新增面板。
 
 本文件只说明**当前处于什么状态**，不新增契约、不放宽既有约束。实现与验收范围仍以
 [P0-SLIM.md](P0-SLIM.md) 为准，长期设计见 [DESIGN.md](DESIGN.md)；两者范围不一致时以
@@ -28,8 +33,17 @@ ToolSeed 已是可供真实 Agent 工作使用的 **Alpha**：四个公共工具
 | 本地 SQLite 持久化、共享数据目录、namespace 隔离、schema 迁移与并发唯一性 | 迁移/并发/持久化测试 |
 | `toolseed-mcp` stdio 服务 | 官方 SDK 客户端验证四工具与结构化 stats；stdio 子进程用例由 CI 工作流在三个平台执行（本轮无 CI 运行记录，该用例在本机因沙箱禁止子进程管道而跳过） |
 | 发布包形态（wheel 内含 Skill、entry point、非 editable 安装） | `scripts/package_smoke.py`、`scripts/verify_release.py`；CI `package` job 执行同一套检查（工作流配置，本轮无 CI 运行记录） |
+| 只读管理 CLI：status / capabilities list、show / activity / evidence / ui | 真实临时库、目录隔离、环境变量优先级、生命周期门禁、无写入、错误与帮助测试 |
+| DSH Desktop 0.2.1-rc.2 原生 ToolSeed 插件设置页 | 官方 settings.section、宿主 IPC 查询；同文档原生控件与主题令牌；“已入库能力”/“活动”两页，详情含验证、历史及高级信息；隔离同版 DSH 验证外观同步 |
+| 可选独立 Web GUI | 复用两页及详情展示、固定 loopback、HTTP 安全测试；沿用 [GUI.md](GUI.md) 的证据边界 |
 
-本地回归：252 项测试全部通过（2 项按条件跳过）。具体范围见 [README 测试章节](../README.md#测试)。
+本地回归：290 项测试（Python 当前套件收录数，非本轮全量执行结果）。此前基线的 252 项测试已通过
+（2 项按条件跳过）；GUI 开发仅执行相关定向测试，见 [GUI 验证说明](GUI.md)。
+具体范围见 [README 测试章节](../README.md#测试)。
+DSH 插件现有 11 项 Node 定向测试。本轮 UI 简化运行 26 项 GUI/管理 Python 测试及 4 项文档契约测试。
+实际截图与本轮检查边界见 [PANEL-SIMPLIFICATION.md](PANEL-SIMPLIFICATION.md)。
+范围和宿主契约依据见
+[AGENT-INTERFACES.md](AGENT-INTERFACES.md)；未重新开展 A/B 实验或全量质量门禁。
 
 ## 3. 已在真实 Agent 中观察到的能力复用
 
@@ -69,8 +83,10 @@ Core 一律保持 `unknown`。
   管理 CLI/Adapter 侧可用。
 - 不提供跨主机的统一可移植性保证：同一能力库可被多个宿主共享，但每次执行仍要检查
   运行时、权限、依赖、工作区与宿主能力兼容性。
-- 宿主接入的验证程度有限：MCP stdio 服务与配置格式已用官方客户端验证，
-  但 Claude Code / Cursor / Codex 的客户端 UI 接入尚未逐个人工确认。
+- 宿主接入的验证程度有限：DSH 0.2.1-rc.2 的设置页面与主题同步已用同版本隔离 Web 客户端检查，
+  没有重启或操作用户当前 Desktop 会话；重启后加载更新。Codex CLI
+  0.163.0-alpha.11、Claude Code 2.1.150 保留 MCP 与管理 CLI，未实现原生面板。
+  ChatGPT 的组件 UI 不作为 Codex 面板能力的依据；其他客户端尚未逐个人工确认。
 - 不做安全沙箱：保存的 Procedure 是**不可信数据**，只作为能力材料交付。
 
 ## 6. 已知限制

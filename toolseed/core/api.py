@@ -32,6 +32,7 @@ from .evidence import (
     EVENT_RELEASED,
     EVENT_SEARCH,
     EVENT_TASK_OUTCOME,
+    EVENT_TOOL_FAILED,
     EVENT_VERSION_PROMOTED,
     EVENT_VERSION_RELEASED,
     EVENT_VERSION_ROLLED_BACK,
@@ -211,10 +212,39 @@ class ToolSeed:
         result = self.search_engine.search(query, context)
         if "results" in result:
             self.evidence.record(EVENT_SEARCH, quantity=len(result["results"]))
+        self._record_tool_failure("toolbox_search", result)
         return result
 
     def toolbox_save(self, candidate: Any, intent: Any = "", context: Any = None) -> dict[str, Any]:
-        return self._save_candidate(candidate, intent, context)
+        result = self._save_candidate(candidate, intent, context)
+        target = candidate.get("target_capability_id") if isinstance(candidate, dict) else None
+        self._record_tool_failure("toolbox_save", result, target)
+        return result
+
+    def _record_tool_failure(
+        self, tool: str, result: dict[str, Any], target: Any = None
+    ) -> None:
+        """Best-effort audit of returned failures; never persist request text or arguments.
+
+        A tool failure is not a task outcome. Storage outages may prevent this audit
+        too; the original public response must remain unchanged in that case.
+        """
+        error = result.get("error")
+        if not isinstance(error, dict):
+            return
+        try:
+            capability = self.registry.get_capability(target) if isinstance(target, str) else None
+            self.evidence.record(
+                EVENT_TOOL_FAILED,
+                capability_id=capability["capability_id"] if capability is not None else None,
+                summary=json.dumps(
+                    {"tool": tool, "status": "failed", "error_code": error["code"]},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            )
+        except (sqlite3.Error, OSError):
+            pass
 
     def _save_candidate(
         self,
@@ -400,6 +430,13 @@ class ToolSeed:
         return response
 
     def toolbox_run(self, capability: Any, args: Any = None, options: Any = None) -> dict[str, Any]:
+        result = self._deliver_procedure(capability, args, options)
+        self._record_tool_failure("toolbox_run", result, capability)
+        return result
+
+    def _deliver_procedure(
+        self, capability: Any, args: Any = None, options: Any = None
+    ) -> dict[str, Any]:
         if args is not None and not isinstance(args, dict):
             return error_response(INVALID_ARGUMENT, "args must be an object")
         if options is not None and not isinstance(options, dict):
@@ -978,6 +1015,10 @@ class ToolSeed:
                 return error_response(INVALID_ARGUMENT, f"{name} must be a string")
         if not self.evidence.evidence_exists(evidence_id):
             return error_response(INVALID_ARGUMENT, "evidence_id does not exist")
+        if self.evidence.is_activity_only(evidence_id):
+            return error_response(
+                INVALID_ARGUMENT, "tool call activity is not assessable capability evidence"
+            )
         assessment = self.evidence.assess(
             evidence_id,
             validity,
@@ -994,13 +1035,16 @@ class ToolSeed:
         if not self.evidence.evidence_exists(evidence_id):
             return error_response(INVALID_ARGUMENT, "evidence_id does not exist")
         latest = self.evidence.latest_validity(evidence_id)
-        return {
+        result = {
             "ok": True,
             "evidence_id": evidence_id,
             "validity": latest,
             "assessed": latest is not None,
             "assessments": self.evidence.assessments(evidence_id),
         }
+        if self.evidence.is_activity_only(evidence_id):
+            result["assessable"] = False
+        return result
 
     def expire_version_evidence(
         self,

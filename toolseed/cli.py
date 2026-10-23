@@ -25,6 +25,17 @@ def _payload(raw: str | None) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .management import COMMANDS
+    from .management import main as management_main
+
+    arguments = list(argv) if argv is not None else sys.argv[1:]
+    common = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    common.add_argument("--data-dir")
+    common.add_argument("--text", action="store_true")
+    common.add_argument("--json", action="store_true")
+    _, remaining = common.parse_known_args(arguments)
+    if remaining and remaining[0] in COMMANDS:
+        return management_main(arguments)
     parser = argparse.ArgumentParser(prog="toolseed")
     parser.add_argument(
         "operation",
@@ -62,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--canonical", action="append", default=None)
     parser.add_argument("--merge-capability", action="append", default=None)
     parser.add_argument("--no-backup", action="store_true")
+    parser.epilog = ("只读管理命令：status、capabilities list、capabilities show ID、activity、evidence、ui。"
+                     "例如 toolseed capabilities list --help；默认 JSON，--text 可读输出。")
     namespace = parser.parse_args(argv)
 
     if namespace.operation == "migrate-check":

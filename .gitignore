@@ -15,6 +15,8 @@ venv/
 # ============ 测试相关 ============
 .pytest_cache/
 .test-data-*/
+# Centralized test data (see .test-data/INDEX.md). Never commit these.
+.test-data/
 .final-check/
 tests/.data/
 

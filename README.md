@@ -1,5 +1,9 @@
 # ToolSeed
 
+P1-A 本地增量：DSH 0.2.1-rc.2 可根据重复的结构化工具失败，在正常 Agent 步骤中给出一次
+L1 能力机会提示。已有 MCP、只读面板和 CLI 路径保留；不自动执行、保存或增加模型调用。
+触发条件、启用配置、实际验证和行为验收边界见 [P1-A 交付记录](docs/P1-A.md)。
+
 面向 Agent 的本地**程序性能力库**（P0-Slim）。核心对象是 **Capability**：一个可复用、可检索、
 可版本化的 `procedure`。P0 只保存和交付程序性指引，**不执行代码**。
 
@@ -167,6 +171,64 @@ asyncio.run(main())
 
 见[当前范围与未实现项](#当前范围与未实现项)。Alpha 状态、已验证机制与限制见
 [docs/ALPHA-STATUS.md](docs/ALPHA-STATUS.md)。
+
+## 管理入口：DSH 原生面板、CLI 和可选 Web GUI
+
+当前工作树以已发布的 v0.4.1 为基线。新管理入口尚未发布；先在选定 Python 环境中安装本工作树
+（`python -m pip install -e .`）。各入口共享同一 `--data-dir`，不建立宿主专属能力库。
+
+CLI 默认沿用 JSON 输出，添加 `--text` 可用于终端阅读；通用参数可放在子命令前后：
+
+```bash
+toolseed status --data-dir /absolute/path/to/.toolseed --text
+toolseed capabilities list --query timeout --limit 30 --data-dir /absolute/path/to/.toolseed
+toolseed capabilities show cap_xxx --data-dir /absolute/path/to/.toolseed --text
+toolseed activity --type tool_call_failed --data-dir /absolute/path/to/.toolseed --text
+toolseed evidence --capability cap_xxx --data-dir /absolute/path/to/.toolseed --text
+toolseed ui --data-dir /absolute/path/to/.toolseed
+```
+
+命令均可用 `python -m toolseed` 代替 `toolseed`。这些新增查询不调用公共工具，不产生检索/交付活动，
+不初始化或迁移数据库；空结果、数据库缺失与结果未知分别显示。管理读取错误退出码为 2。
+既有带 JSON 参数的操作命令保持原用法，见[管理操作与 CLI](#管理操作与-cli)。
+
+DSH Desktop **0.2.1-rc.2** 的本地插件使用官方 `settings.section` 插槽；安装后从 **设置 → ToolSeed** 打开面板，
+由宿主 IPC 查询，不需要手动启动 Python 服务或浏览器。先完全退出 DSH，再运行一次：
+
+```powershell
+node integrations/dsh/build.mjs
+./integrations/dsh/install.ps1 -Python F:/ToolSeed/.venv311/Scripts/python.exe `
+  -DataDir F:/ToolSeed/.toolseed `
+  -DshCommand 'F:/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd'
+```
+
+替换为本机路径，`DataDir` 必须与现有 MCP 配置相同。安装使用官方插件命令并备份 desktop patch，
+不修改 DSH 源码。插件实现、配置和版本依据见 [DSH 插件说明](integrations/dsh/README.md)。
+页面使用宿主原生控件，直接继承 DSH 全局主题、颜色、背景与字体，无独立主题或 iframe。
+面板只有“已入库能力”和“活动”两页，顶部显示能力数与指引交付数；验证、历史和原始 ID 按需在详情中展开。
+名称优先使用已有可读描述，接入自检等测试能力明确标记；可提供指引不等于已验证或任务成功。
+同版本隔离 DSH 已验证两页、搜索、详情及跨页面主题/字体同步；更新已有本地链接后重启 DSH 生效。
+其他版本仍需核验。
+Codex CLI 与 Claude Code 保留 MCP + 管理 CLI，本轮没有已核实的通用自定义面板契约，未声称实现原生 UI；
+官方依据和已核实版本见 [宿主支持范围](docs/AGENT-INTERFACES.md)。
+
+### 可选的独立 Web GUI（GUI v0.1）
+
+在当前源码环境中运行：
+
+```bash
+python -m toolseed.ui --data-dir /absolute/path/to/.toolseed
+```
+
+安装当前工作树（`python -m pip install -e .`）后，也可以运行
+`toolseed-ui --data-dir /absolute/path/to/.toolseed`，然后在浏览器打开
+`http://127.0.0.1:8765`。数据目录沿用 `--data-dir` / `TOOLSEED_DATA_DIR` / `~/.toolseed`，
+`--port` 可调整端口；服务固定只监听 `127.0.0.1`。
+
+与原生面板共享“已入库能力”和“活动”两页及详情展示，所有列表来自真实 SQLite 记录。
+面板不会创建、迁移或修改数据库，不执行能力。历史缺失的失败、实际采用与执行记录不会补造；
+未知结果和成本保持未知。完整启动、数据来源及验证说明见 [docs/GUI.md](docs/GUI.md)，
+本轮 UI 修改与实际截图见 [面板简化交付记录](docs/PANEL-SIMPLIFICATION.md)。
 
 ## 四个公共 API
 
@@ -595,7 +657,7 @@ GitHub Release 由 `v*` tag 触发：构建 sdist/wheel，生成 `SHA256SUMS`，
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **252 项**测试；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
+当前 **290 项**测试（Python 套件收录数；本轮只运行定向测试，见 [P1-A 验证说明](docs/P1-A.md)、[管理入口验证](docs/AGENT-INTERFACES.md) 与 [GUI 验证说明](docs/GUI.md)）；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 随包 Skill 与 Core 契约一致性（Skill 写明的字段上限必须等于 Core 权威常量）、保存被拒后的
