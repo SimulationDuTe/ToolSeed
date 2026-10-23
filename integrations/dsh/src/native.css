@@ -1,0 +1,27 @@
+/* Consume the live host appearance; no palette or independent theme state. */
+.toolseed-native,.toolseed-native-detail {
+  --ts-text:var(--dsw-alias-label-primary);
+  --ts-muted:var(--dsw-alias-label-secondary);
+  --ts-line:var(--dsw-alias-border-l1);
+  --ts-hover:var(--dsw-alias-interactive-bg-hover);
+  --ts-accent:var(--dsw-alias-state-business-primary);
+  --ts-warning:var(--dsw-alias-state-warn-primary);
+  --ts-success:var(--dsw-alias-state-success-primary);
+  --ts-font:var(--dsw-font-family);
+  --ts-code:var(--ds-font-family-code);
+  --ts-code-size:var(--dsh-code-font-size);
+  font-family:var(--dsw-font-family);
+  font-size:var(--dsh-content-font-size);
+  color:var(--dsw-alias-label-primary);
+  min-width:0;
+}
+.toolseed-native { display:flex;flex-direction:column;gap:.8rem }
+.toolseed-native-header,.toolseed-native-toolbar,.toolseed-native-pagination { display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;min-width:0 }
+.toolseed-native-header { justify-content:space-between }
+.toolseed-native-header h2 { margin:0;font:inherit;font-weight:600 }
+.toolseed-native-toolbar>span:first-child { flex:1;min-width:0 }
+.toolseed-native-toolbar>span:has(input) { flex:1;min-width:min(100%,12rem) }
+.toolseed-native-toolbar input { min-width:0;width:100% }
+.toolseed-native-pagination { justify-content:flex-end;margin-top:1rem }
+.toolseed-native-detail { width:min(90vw,46rem);max-height:85vh;overflow:auto }
+.toolseed-native-detail h2 { overflow-wrap:anywhere }

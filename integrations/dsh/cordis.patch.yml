@@ -1,0 +1,5 @@
+- insert:
+    - id: toolseed-panel
+      name: dsh-toolseed
+      config:
+        python: python
