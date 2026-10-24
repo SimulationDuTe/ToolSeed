@@ -4,6 +4,9 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
+  rmdirSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import {homedir} from 'node:os';
@@ -156,7 +159,9 @@ export function readMcpServerConfigured(text, mcpServer) {
 
 function readOptional(path) {
   try {
-    return readFileSync(path, 'utf8');
+    // Windows editors and PowerShell commonly write a UTF-8 BOM; JSON.parse
+    // rejects it, so strip it before parsing user-owned configuration.
+    return readFileSync(path, 'utf8').replace(/^\uFEFF/, '');
   } catch (error) {
     if (error?.code === 'ENOENT') return '';
     throw error;
@@ -365,6 +370,85 @@ export async function installCodexAdapter(options = {}) {
   return plan;
 }
 
+export function removeAgentsBlock(text) {
+  const source = typeof text === 'string' ? text : '';
+  const pattern = new RegExp(
+    `\\n?${escapeRegExp(AGENTS_BEGIN)}[\\s\\S]*?${escapeRegExp(AGENTS_END)}\\n?`, 'm');
+  if (!pattern.test(source)) return source;
+  const stripped = source.replace(pattern, '\n').replace(/\n{3,}/g, '\n\n');
+  return stripped.replace(/\s+$/u, '') ? `${stripped.replace(/\s+$/u, '')}\n` : '';
+}
+
+export function removeHooksConfig(existing) {
+  const config = isPlainObject(existing) ? structuredClone(existing) : {};
+  const hooks = isPlainObject(config.hooks) ? config.hooks : {};
+  const groups = Array.isArray(hooks.PostToolUse) ? hooks.PostToolUse : [];
+  const kept = groups.filter(group => !isToolseedGroup(group));
+  const removed = groups.length - kept.length;
+  if (kept.length) config.hooks = {...hooks, PostToolUse: kept};
+  else {
+    const remaining = {...hooks};
+    delete remaining.PostToolUse;
+    if (Object.keys(remaining).length) config.hooks = remaining;
+    else delete config.hooks;
+  }
+  return {config, removed};
+}
+
+export function uninstallCodexAdapter(options = {}) {
+  const apply = options.apply === true;
+  const codexHome = resolveCodexHome(options.codexHome);
+  const skillPath = join(codexHome, 'skills', 'toolseed', 'SKILL.md');
+  const skillDir = dirname(skillPath);
+  const hooksPath = join(codexHome, 'hooks.json');
+  const agentsPath = join(codexHome, 'AGENTS.md');
+  const stateDir = resolve(options.stateDir ?? defaultStateDir(codexHome));
+  const logDir = resolve(options.logDir ?? defaultLogDir(codexHome));
+
+  let hooksConfig = null;
+  let removedHooks = 0;
+  try {
+    const current = JSON.parse(readOptional(hooksPath) || 'null');
+    const result = removeHooksConfig(current);
+    hooksConfig = result.config;
+    removedHooks = result.removed;
+  } catch (error) {
+    throw new Error(`Cannot parse ${hooksPath}: ${error.message}`);
+  }
+  const existingAgents = readOptional(agentsPath);
+  const nextAgents = removeAgentsBlock(existingAgents);
+  const agentsChanged = nextAgents !== existingAgents;
+
+  const plan = {
+    applied: false,
+    host: 'codex',
+    codex_home: codexHome,
+    removed: {
+      skill: existsSync(skillPath),
+      hooks: removedHooks,
+      agents: agentsChanged,
+      adapter_state: existsSync(stateDir) || existsSync(logDir),
+    },
+    files: {skill: skillPath, hooks: hooksPath, agents: agentsPath,
+      state_dir: stateDir, log_dir: logDir},
+    preserved: 'MCP configuration, other hooks, unrelated skills and the capability database',
+  };
+  if (!apply) return plan;
+
+  if (existsSync(skillPath)) unlinkSync(skillPath);
+  try { rmdirSync(skillDir); } catch { /* Keep a non-empty user-owned directory. */ }
+  if (removedHooks > 0 || hooksConfig) writeText(hooksPath, `${JSON.stringify(hooksConfig, null, 2)}\n`);
+  if (agentsChanged) {
+    if (nextAgents) writeText(agentsPath, nextAgents);
+    else try { unlinkSync(agentsPath); } catch { /* Best effort. */ }
+  }
+  for (const directory of [stateDir, logDir]) {
+    try { rmSync(directory, {recursive: true, force: true}); } catch { /* Best effort. */ }
+  }
+  plan.applied = true;
+  return plan;
+}
+
 function textReport(plan) {
   const lines = [
     `${plan.applied ? 'Applied' : 'Dry run'} Codex adapter for ToolSeed`,
@@ -388,12 +472,14 @@ async function main() {
     strict: false,
     options: {
       apply: {type: 'boolean', default: false},
+      uninstall: {type: 'boolean', default: false},
       'codex-home': {type: 'string'},
       'data-dir': {type: 'string'},
       'mcp-server': {type: 'string', default: 'toolseed'},
       codex: {type: 'string'},
       node: {type: 'string'},
       'skill-source': {type: 'string'},
+      'hook-script': {type: 'string'},
       'no-agents-md': {type: 'boolean', default: false},
       'no-trust': {type: 'boolean', default: false},
       json: {type: 'boolean', default: false},
@@ -401,6 +487,18 @@ async function main() {
     },
   });
   try {
+    if (values.uninstall) {
+      const plan = uninstallCodexAdapter({
+        apply: values.apply,
+        codexHome: values['codex-home'],
+      });
+      process.stdout.write(values.json ? `${JSON.stringify(plan, null, 2)}\n` : `${plan.applied
+        ? 'Removed the ToolSeed Codex adapter'
+        : 'Dry run: would remove the ToolSeed Codex adapter'}\n  Skill: ${plan.removed.skill}\n`
+        + `  Hook handlers: ${plan.removed.hooks}\n  AGENTS.md: ${plan.removed.agents}\n`
+        + `  Adapter state: ${plan.removed.adapter_state}\n  Preserved: ${plan.preserved}\n`);
+      return;
+    }
     const plan = await installCodexAdapter({
       apply: values.apply,
       codexHome: values['codex-home'],
@@ -409,6 +507,7 @@ async function main() {
       codex: values.codex,
       nodePath: values.node,
       skillSource: values['skill-source'],
+      hookScript: values['hook-script'],
       trust: values['no-trust'] ? false : true,
       agentsMd: values['no-agents-md'] ? false : true,
       cwd: values.cwd,

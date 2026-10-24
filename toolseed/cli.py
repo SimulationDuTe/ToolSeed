@@ -25,6 +25,8 @@ def _payload(raw: str | None) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .install_cli import COMMANDS as HOST_COMMANDS
+    from .install_cli import main as host_main
     from .management import COMMANDS
     from .management import main as management_main
 
@@ -34,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     common.add_argument("--text", action="store_true")
     common.add_argument("--json", action="store_true")
     _, remaining = common.parse_known_args(arguments)
+    if remaining and remaining[0] in HOST_COMMANDS:
+        return host_main(arguments)
     if remaining and remaining[0] in COMMANDS:
         return management_main(arguments)
     parser = argparse.ArgumentParser(prog="toolseed")

@@ -192,6 +192,23 @@ toolseed ui --data-dir /absolute/path/to/.toolseed
 不初始化或迁移数据库；空结果、数据库缺失与结果未知分别显示。管理读取错误退出码为 2。
 既有带 JSON 参数的操作命令保持原用法，见[管理操作与 CLI](#管理操作与-cli)。
 
+### 统一安装与生命周期（DSH / Codex）
+
+```bash
+toolseed install codex --ref <tag|sha|本地源码目录>
+toolseed install dsh   --ref <tag|sha|本地源码目录>
+toolseed status                 # 只读：能力库 + 宿主状态
+toolseed host --text            # 只读：宿主、版本、Skill、Hook、MCP
+toolseed update codex --ref <tag|sha>
+toolseed uninstall codex
+```
+
+安装器按**固定 commit SHA** 获取适配层源码并装到 `~/.toolseed/hosts/<host>/`，
+不依赖开发工作区；复用 `integrations/codex` 与 `integrations/dsh` 的现有安装器，
+不修改 Core、Schema 或四工具协议。当前没有任何 Release 包含 Codex Adapter，
+因此只能以**预发布 SHA** 安装；`update` 不会跟随分支漂移。
+详见[统一安装说明](docs/UNIFIED-INSTALL.md)。
+
 DSH Desktop **0.2.1-rc.2** 的本地插件使用官方 `settings.section` 插槽；安装后从 **设置 → ToolSeed** 打开面板，
 由宿主 IPC 查询，不需要手动启动 Python 服务或浏览器。先完全退出 DSH，再运行一次：
 

@@ -29,11 +29,32 @@ def render_text(command: str, payload: dict[str, Any]) -> str:
         return f"{payload['error']['code']}: {_text(payload['error']['message'])}\n目录: {_text(payload['data_dir'])}"
     if command == "status":
         data = payload["database"]
-        return (f"ToolSeed {_text(payload['toolseed_version'])}\n数据目录: {_text(data['data_dir'])}\n"
-                f"数据库: {data['state']} · Schema v{data['schema']} · 只读\n"
-                f"能力: {payload['counts']['capabilities']} · 版本: {payload['counts']['capability_versions']}\n"
-                "程序执行 / 实际采用 / 独立任务确认 / 成本: 未知或未记录\n"
-                "其他入口服务状态: 未探测（读取数据库不代表 MCP 或 UI 已启动）")
+        lines = [f"ToolSeed {_text(payload['toolseed_version'])}", f"数据目录: {_text(data['data_dir'])}",
+                 f"数据库: {data['state']} · Schema v{data['schema']} · 只读",
+                 f"能力: {payload['counts']['capabilities']} · 版本: {payload['counts']['capability_versions']}",
+                 "程序执行 / 实际采用 / 独立任务确认 / 成本: 未知或未记录"]
+        hosts = payload.get("hosts") or {}
+        if "error" in hosts:
+            lines.append(f"宿主检查: 不可用（{_text(hosts['error']['message'])}）")
+        else:
+            for host_name, entry in hosts.items():
+                if not entry.get("installed"):
+                    if entry.get("configured"):
+                        failed = [c["id"] for c in entry.get("checks", [])
+                                  if c["state"] in ("missing", "error")]
+                        lines.append(f"宿主 {host_name}: 未纳管（检测到现有配置）"
+                                     + (f"，缺失/异常: {', '.join(failed)}" if failed else ""))
+                    else:
+                        lines.append(f"宿主 {host_name}: 未安装")
+                    continue
+                stable = "预发布" if entry.get("prerelease") else "稳定"
+                lines.append(f"宿主 {host_name}: v{entry.get('version')} · {stable} · "
+                             f"{str(entry.get('commit_sha'))[:12]}")
+                failed = [c["id"] for c in entry.get("checks", [])
+                          if c["state"] in ("missing", "error")]
+                lines.append("  检查: " + ("全部存在" if not failed else "缺失/异常: " + ", ".join(failed)))
+        lines.append("其他入口服务状态: 未探测（读取数据库不代表 MCP 或 UI 已启动）")
+        return "\n".join(lines)
     if command == "show":
         capability = payload["capability"]
         rows = [f"{_text(capability['name'])}  {_text(capability['capability_id'])}",
@@ -140,6 +161,15 @@ def main(argv: list[str]) -> int:
         if command == "status":
             payload["toolseed_version"] = package_version()
             payload["service_status"] = "unknown"
+            # Host state is additive: existing counts/database fields are
+            # unchanged, and the check stays read-only by default (no app-server).
+            try:
+                from .hosts_cli import host_status
+
+                payload["hosts"] = host_status(data_dir=options.data_dir)["hosts"]
+            except Exception as exc:  # noqa: BLE001 - host probing must never break status
+                payload["hosts"] = {"error": {"code": "HOST_STATUS_UNAVAILABLE",
+                                              "message": str(exc)}}
     except InspectionError as exc:
         code = 2
         payload = {"ok": False, "error": {"code": exc.code, "message": exc.message},
