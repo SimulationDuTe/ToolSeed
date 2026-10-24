@@ -2,19 +2,33 @@ param(
     [Parameter(Mandatory = $true)][string]$Python,
     [Parameter(Mandatory = $true)][string]$DataDir,
     [string]$DshCommand = 'dsh',
-    [string]$DshHome = $(if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' })
+    [string]$DshHome = $(if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }),
+    # Optional pre-fetched adapter tree. Defaults to this script's directory so the
+    # existing checkout workflow keeps working unchanged.
+    [string]$PluginDir = $PSScriptRoot,
+    # Plan only: report what would change without installing or editing config.
+    [switch]$DryRun,
+    # Only for an isolated, non-default DSH home during testing. The live
+    # desktop profile must still be closed before it is modified.
+    [switch]$SkipRunningCheck,
+    # Machine-readable result on stdout.
+    [switch]$Json
 )
 $ErrorActionPreference = 'Stop'
 # Only the official package manager changes the Desktop profile's dependencies.
 # Run after fully exiting DSH; never change its installed source or binaries.
 $pythonPath = (Resolve-Path -LiteralPath $Python).Path
 $dataPath = [IO.Path]::GetFullPath($DataDir)
+$pluginPath = (Resolve-Path -LiteralPath $PluginDir).Path
+if (-not (Test-Path -LiteralPath (Join-Path $pluginPath 'package.json'))) {
+    throw "Plugin directory has no package.json: $pluginPath"
+}
 $profilePath = Join-Path ([IO.Path]::GetFullPath($DshHome)) 'profiles\desktop'
 $patchPath = Join-Path $profilePath 'cordis.patch.yml'
 if (-not (Test-Path -LiteralPath (Join-Path $profilePath 'package.json'))) {
     throw 'Open DSH Desktop once to initialize the desktop profile, then fully quit it.'
 }
-if (Get-Process -Name 'DeepSeek Harness' -ErrorAction SilentlyContinue) {
+if (-not $DryRun -and -not $SkipRunningCheck -and (Get-Process -Name 'DeepSeek Harness' -ErrorAction SilentlyContinue)) {
     throw 'Fully quit DSH Desktop before installing the plugin.'
 }
 $previous = if (Test-Path -LiteralPath $patchPath) { [IO.File]::ReadAllText($patchPath) } else { '' }
@@ -35,19 +49,56 @@ $block = @"
 # END TOOLSEED PANEL
 "@
 $newPatch = [regex]::Replace($previous, $pattern, '').TrimEnd() + "`n" + $block + "`n"
+$patchChanged = $newPatch -ne $previous
+if ($DryRun) {
+    $result = [ordered]@{
+        ok = $true; dry_run = $true; plugin_dir = $pluginPath; python = $pythonPath
+        data_dir = $dataPath; profile = $profilePath; patch = $patchPath
+        patch_changed = $patchChanged; installed = $false
+    }
+    if ($Json) { $result | ConvertTo-Json -Compress } else {
+        Write-Output "Dry run: would install $pluginPath"
+        Write-Output "Profile: $profilePath (patch changed: $patchChanged)"
+    }
+    exit 0
+}
+$previousPlugin = $null
+$packagePath = Join-Path $profilePath 'package.json'
+try {
+    $packageJson = Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json
+    $deps = $packageJson.dependencies
+    if ($deps -and $deps.'dsh-toolseed') { $previousPlugin = $deps.'dsh-toolseed' }
+} catch { }
 $envPrevious = $env:DSH_HOME
 try {
     $env:DSH_HOME = [IO.Path]::GetFullPath($DshHome)
-    & $DshCommand plugin --profile desktop add $PSScriptRoot
-    if ($LASTEXITCODE -ne 0) { throw "Official DSH plugin installation failed (exit $LASTEXITCODE); panel configuration was not changed." }
+    & $DshCommand plugin --profile desktop add $pluginPath
+    if ($LASTEXITCODE -ne 0) {
+        # Restore a previous registration if this was an upgrade attempt.
+        if ($previousPlugin) {
+            try { & $DshCommand plugin --profile desktop add $previousPlugin | Out-Null } catch { }
+        }
+        throw "Official DSH plugin installation failed (exit $LASTEXITCODE); panel configuration was not changed."
+    }
 } finally {
     $env:DSH_HOME = $envPrevious
 }
-if ($newPatch -ne $previous) {
+$patchBackup = $null
+if ($patchChanged) {
     if (Test-Path -LiteralPath $patchPath) {
-        Copy-Item -LiteralPath $patchPath -Destination ($patchPath + '.toolseed-backup-' + [guid]::NewGuid().ToString('N'))
+        $patchBackup = $patchPath + '.toolseed-backup-' + [guid]::NewGuid().ToString('N')
+        Copy-Item -LiteralPath $patchPath -Destination $patchBackup
     }
     [IO.File]::WriteAllText($patchPath, $newPatch, [Text.UTF8Encoding]::new($false))
 }
-Write-Output 'ToolSeed panel installed. Open DSH Desktop, then Settings > ToolSeed.'
-Write-Output "Shared ToolSeed data directory: $dataPath"
+if ($Json) {
+    [ordered]@{
+        ok = $true; dry_run = $false; plugin_dir = $pluginPath; python = $pythonPath
+        data_dir = $dataPath; profile = $profilePath; patch = $patchPath
+        patch_backup = $patchBackup; patch_changed = $patchChanged
+        previous_plugin = $previousPlugin; installed = $true
+    } | ConvertTo-Json -Compress
+} else {
+    Write-Output 'ToolSeed panel installed. Open DSH Desktop, then Settings > ToolSeed.'
+    Write-Output "Shared ToolSeed data directory: $dataPath"
+}
