@@ -567,6 +567,13 @@ python -m toolseed migrate-check --data-dir .toolseed
 工作区事件、权限确认、取消或可靠任务结果通道。不支持的能力返回 `False`，不模拟。
 它另外提供 `health_check()` 与 `translate_error()`，不改变 Core 的错误语义。
 
+**Codex Agent Adapter**（本地未发布）位于 `integrations/codex`：在既有 MCP 之外，
+使用 Codex 的 `PostToolUse` hook 提供一次 L1 机会提示，安装 ToolSeed Skill 与
+`AGENTS.md` 片段，并提供基于 Codex app-server 的安装/自检。它不替代 MCP，不修改
+Core、Schema 或公共四工具协议。接入方式、DSH/Codex 能力对照、已验证范围与限制见
+[Codex Adapter 说明](integrations/codex/README.md)和
+[交付记录](docs/CODEX-ADAPTER.md)。
+
 ## MCP Server
 
 官方 Model Context Protocol Python SDK（PyPI 包 `mcp`，锁定 2.3.x）提供 stdio 服务：

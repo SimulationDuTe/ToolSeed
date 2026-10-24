@@ -1,0 +1,21 @@
+# Codex MCP configuration example for ToolSeed.
+#
+# Append this block to $CODEX_HOME/config.toml (usually ~/.codex/config.toml).
+# Use absolute paths. The data directory must be the same one used by the CLI,
+# the DSH panel and any other host that should share the capability library.
+#
+# Windows example (python -m toolseed.mcp_server also works):
+# [mcp_servers.toolseed]
+# command = "C:\\absolute\\path\\to\\toolseed-mcp.exe"
+# args = ["--data-dir", "C:\\absolute\\path\\to\\.toolseed"]
+# startup_timeout_sec = 30
+# tool_timeout_sec = 60
+# # Optional: this is the same server-level approval mode used by the local
+# # adapter verification. Reconsider it for your own trust model.
+# default_tools_approval_mode = "approve"
+
+[mcp_servers.toolseed]
+command = "C:\\absolute\\path\\to\\toolseed-mcp.exe"
+args = ["--data-dir", "C:\\absolute\\path\\to\\.toolseed"]
+startup_timeout_sec = 30
+tool_timeout_sec = 60
