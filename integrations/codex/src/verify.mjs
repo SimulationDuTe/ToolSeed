@@ -4,6 +4,7 @@ import {parseArgs} from 'node:util';
 import {queryCodexAppServer} from './app-server-client.mjs';
 import {AGENTS_BEGIN, AGENTS_END, findCodexBinary, HOOK_STATUS, readMcpServerConfigured} from './install.mjs';
 import {resolveCodexHome, resolveDataDir} from './paths.mjs';
+import {WORKFLOW_EVENTS} from './workflow.mjs';
 
 function readOptional(path) {
   try {
@@ -55,18 +56,19 @@ export async function verifyCodexAdapter(options = {}) {
   }
 
   if (version) checks.push({id: 'codex_version', ok: true, detail: version});
-  const hook = hooks.find(item => resolve(String(item?.sourcePath ?? '')) === resolve(hooksPath)
+  const selectedHooks = hooks.filter(item => resolve(String(item?.sourcePath ?? '')) === resolve(hooksPath)
     && (String(item?.command ?? '').includes('toolseed-hook.mjs')
+      || String(item?.commandWindows ?? '').includes('toolseed-hook.mjs')
       || item?.statusMessage === HOOK_STATUS));
   checks.push({
     id: 'hook_listed',
-    ok: Boolean(hook),
-    detail: hook ? hook.key : 'ToolSeed PostToolUse hook was not listed by hooks/list',
+    ok: selectedHooks.length >= WORKFLOW_EVENTS.length,
+    detail: `${selectedHooks.length}/${WORKFLOW_EVENTS.length} workflow hooks listed`,
   });
   checks.push({
     id: 'hook_trusted',
-    ok: hook?.trustStatus === 'trusted',
-    detail: hook ? `trustStatus=${hook.trustStatus}` : 'hook not listed',
+    ok: selectedHooks.length >= WORKFLOW_EVENTS.length && selectedHooks.every(item => item.trustStatus === 'trusted'),
+    detail: selectedHooks.length ? selectedHooks.map(item => `${item.key}: ${item.trustStatus}`).join('; ') : 'hooks not listed',
   });
   const skill = skills.find(item => item?.name === 'toolseed');
   checks.push({

@@ -77,12 +77,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("payload", nargs="?", default=None, help="JSON object; omitted reads stdin")
     parser.add_argument("--data-dir", default=None)
+    parser.add_argument("--read-only", action="store_true",
+                        help="search only: use a read-only snapshot without creating or migrating a library")
     parser.add_argument("--canonical", action="append", default=None)
     parser.add_argument("--merge-capability", action="append", default=None)
     parser.add_argument("--no-backup", action="store_true")
     parser.epilog = ("只读管理命令：status、capabilities list、capabilities show ID、activity、evidence、ui。"
                      "例如 toolseed capabilities list --help；默认 JSON，--text 可读输出。")
     namespace = parser.parse_args(argv)
+    if namespace.read_only and namespace.operation != "search":
+        parser.error("--read-only is only supported for search")
 
     if namespace.operation == "migrate-check":
         result = inspect_duplicate_identities(namespace.data_dir)
@@ -126,6 +130,25 @@ def main(argv: list[str] | None = None) -> int:
         candidate = {k: v for k, v in payload.items() if k not in ("intent", "context")}
     intent = payload.get("intent", "")
     context = payload.get("context")
+
+    if namespace.read_only:
+        import sqlite3
+
+        from .core.registry import Registry
+        from .core.search import Search
+        from .core.storage import Store, default_data_dir
+
+        try:
+            store = Store(namespace.data_dir or default_data_dir(), read_only=True)
+            try:
+                result = Search(store, Registry(store)).search(payload.get("query", ""), context)
+            finally:
+                store.close()
+        except (OSError, sqlite3.Error, ValueError) as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+            return 2
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
 
     try:
         app = ToolSeed(namespace.data_dir)

@@ -2,7 +2,7 @@
  * Declarative host-capability export for the Codex adapter.
  *
  * This is documentation-as-code: every true value below is backed by a public
- * Codex 0.163 hook or app-server contract that the adapter actually uses.
+ * Codex 0.164 hook or app-server contract. adapter_uses_events lists the subset used.
  * Unsupported capabilities are false rather than simulated.
  */
 export const HOST_CAPABILITIES = Object.freeze({
@@ -23,7 +23,11 @@ export const HOST_CAPABILITIES = Object.freeze({
     subagent_start: true,
     subagent_stop: true,
   }),
-  adapter_uses_events: Object.freeze(['PostToolUse']),
+  adapter_uses_events: Object.freeze(['UserPromptSubmit', 'PostToolUse', 'Interrupt', 'SessionEnd']),
+  proactive_recall: 'bounded local read-only Core query; not a host MCP dispatch',
+  experience_learning: 'host model through toolbox_learn',
+  reuse_feedback: 'invocation-bound host-model observation or candidate amendment',
+  interrupt_cleanup: true,
   tool_result_observation: true,
   context_injection: Object.freeze({
     post_tool_use_additional_context: true,

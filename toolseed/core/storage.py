@@ -223,8 +223,24 @@ def _statements(script: str) -> Iterator[str]:
 
 
 class Store:
-    def __init__(self, root: str | Path) -> None:
+    def __init__(self, root: str | Path, *, read_only: bool = False) -> None:
         self.root = Path(root).resolve()
+        if read_only:
+            self.db = sqlite3.connect(
+                (self.root / "toolseed.sqlite3").as_uri() + "?mode=ro",
+                uri=True, check_same_thread=False, timeout=0.5,
+            )
+            self.db.row_factory = sqlite3.Row
+            self._tx_depth = 0
+            try:
+                self.db.execute("PRAGMA query_only = ON")
+                self.db.execute("BEGIN")
+                if self.schema_version != max(MIGRATIONS):
+                    raise ValueError("read-only search requires the current schema; migrate explicitly")
+            except BaseException:
+                self.db.close()
+                raise
+            return
         self.root.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(
             self.root / "toolseed.sqlite3",

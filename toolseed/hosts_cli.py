@@ -164,7 +164,7 @@ def codex_verify_command(tree: Path, *, codex_home: Path, data_dir: Path,
 
 
 def _install_codex(tree: Path, *, codex_home: Path, data_dir: Path, mcp_server: str,
-                   cwd: Path | None, dry_run: bool) -> dict[str, Any]:
+                   cwd: Path | None, dry_run: bool, python: str | None = None) -> dict[str, Any]:
     host_dir = _require_tree(tree, "codex")
     command = [
         _node_path(), str(host_dir / "src" / "install.mjs"),
@@ -172,6 +172,7 @@ def _install_codex(tree: Path, *, codex_home: Path, data_dir: Path, mcp_server: 
         "--data-dir", str(data_dir),
         "--mcp-server", mcp_server,
         "--node", _node_path(),
+        "--python", python or sys.executable,
         "--skill-source", str(tree / "toolseed" / "skill" / "SKILL.md"),
         "--hook-script", str(host_dir / "src" / "toolseed-hook.mjs"),
         "--json",
@@ -339,7 +340,7 @@ def install_host(
     try:
         dry = (
             _install_codex(target, codex_home=_codex_home(codex_home), data_dir=data,
-                           mcp_server=mcp_server, cwd=cwd, dry_run=True)
+                           mcp_server=mcp_server, cwd=cwd, dry_run=True, python=python)
             if host == "codex"
             else _install_dsh(target, dsh_home=_dsh_home(dsh_home), data_dir=data,
                               python=python, dsh_command=dsh_command, dry_run=True,
@@ -348,7 +349,7 @@ def install_host(
         manifest["preflight"] = {"ok": True, "detail": dry}
         applied = (
             _install_codex(target, codex_home=_codex_home(codex_home), data_dir=data,
-                           mcp_server=mcp_server, cwd=cwd, dry_run=False)
+                           mcp_server=mcp_server, cwd=cwd, dry_run=False, python=python)
             if host == "codex"
             else _install_dsh(target, dsh_home=_dsh_home(dsh_home), data_dir=data,
                               python=python, dsh_command=dsh_command, dry_run=False,

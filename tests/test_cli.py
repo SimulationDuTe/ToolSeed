@@ -5,11 +5,14 @@ import contextlib
 import io
 import json
 import shutil
+import sqlite3
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tests.test_migrations import _add_cross_capability, _v2_database
 from toolseed import cli
+from toolseed.core.storage import Store
 
 BASE = Path(__file__).resolve().parent / ".data" / "cli"
 
@@ -45,6 +48,54 @@ class CliTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         shutil.rmtree(BASE, ignore_errors=True)
+
+    def test_read_only_search_reuses_core_filters_without_writes(self) -> None:
+        data = BASE / "read-only"
+        _, saved = call("save", json.dumps(CANDIDATE), "--data-dir", str(data))
+        database = data / "toolseed.sqlite3"
+        before = database.read_bytes()
+        with patch.object(Store, "_migrate", side_effect=AssertionError("must not migrate")):
+            code, report = call("search", json.dumps({"query": "clismoke testing",
+                                "context": {"recall": {"phase": "task"}}}),
+                                "--data-dir", str(data), "--read-only")
+        self.assertEqual(code, 0, report)
+        self.assertEqual(report["results"][0]["capability_id"], saved["capability_id"])
+        self.assertIn("recall_match", report["results"][0])
+        self.assertEqual(database.read_bytes(), before)
+        store = Store(data, read_only=True)
+        try:
+            with self.assertRaises(sqlite3.OperationalError):
+                store.db.execute("DELETE FROM capabilities")
+        finally:
+            store.close()
+
+    def test_read_only_search_does_not_create_a_missing_library(self) -> None:
+        data = BASE / "missing-read-only"
+        code, report = call("search", '{"query":"clismoke"}',
+                            "--data-dir", str(data), "--read-only")
+        self.assertEqual(code, 2)
+        self.assertFalse(report["ok"])
+        self.assertFalse(data.exists())
+
+    def test_read_only_search_rejects_old_or_future_schema_without_migration(self) -> None:
+        for version in (2, 100):
+            data = BASE / str(version)
+            _v2_database(data, duplicates=False)
+            database = data / "toolseed.sqlite3"
+            with sqlite3.connect(database) as db:
+                db.execute(f"PRAGMA user_version = {version}")
+            before = database.read_bytes()
+            code, report = call("search", '{"query":"clismoke"}',
+                                "--data-dir", str(data), "--read-only")
+            self.assertEqual(code, 2)
+            self.assertIn("current schema", report["error"])
+            self.assertEqual(database.read_bytes(), before)
+
+    def test_read_only_flag_cannot_route_a_write_operation(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+            cli.main(["learn", "{}", "--data-dir", str(BASE), "--read-only"])
+        self.assertEqual(error.exception.code, 2)
+        self.assertFalse(BASE.exists())
 
     def test_migrate_repair_cross_capability_from_cli(self) -> None:
         data = BASE / "migrate-cross"

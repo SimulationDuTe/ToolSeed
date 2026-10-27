@@ -16,10 +16,11 @@ import {parseArgs} from 'node:util';
 import {queryCodexAppServer} from './app-server-client.mjs';
 import {HOST_CAPABILITIES} from './host-capabilities.mjs';
 import {defaultLogDir, defaultStateDir, resolveCodexHome, resolveDataDir} from './paths.mjs';
+import {WORKFLOW_EVENTS} from './workflow.mjs';
 
 export const AGENTS_BEGIN = '<!-- toolseed-codex:begin -->';
 export const AGENTS_END = '<!-- toolseed-codex:end -->';
-export const HOOK_STATUS = 'ToolSeed opportunity adapter';
+export const HOOK_STATUS = 'ToolSeed learning and recall adapter';
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -39,9 +40,13 @@ export function buildHookCommand({
   mcpServer,
   stateDir,
   logDir,
+  python,
+  dataDir,
   platform = process.platform,
 }) {
-  const args = `--mcp-server ${mcpServer} --state-dir ${quoteCommandPart(stateDir)} --log-dir ${quoteCommandPart(logDir)}`;
+  const args = `--mcp-server ${mcpServer} --state-dir ${quoteCommandPart(stateDir)} --log-dir ${quoteCommandPart(logDir)}`
+    + (python ? ` --python ${quoteCommandPart(python)}` : '')
+    + (dataDir ? ` --data-dir ${quoteCommandPart(dataDir)}` : '');
   const direct = `${quoteCommandPart(nodePath)} ${quoteCommandPart(hookScript)} ${args}`;
   // Windows hook processes are launched through cmd; this form was verified
   // against Codex 0.163.0-alpha.11 with both a mapped drive and PATH lookup.
@@ -72,8 +77,6 @@ export function mergeHooksConfig(existing, command) {
   if (typeof commandText !== 'string' || commandText.length === 0) {
     throw new Error('A hook command is required');
   }
-  const existingGroups = Array.isArray(hooks.PostToolUse) ? hooks.PostToolUse : [];
-  const kept = existingGroups.filter(group => !isToolseedGroup(group));
   const group = {
     matcher: '.*',
     hooks: [{
@@ -84,8 +87,18 @@ export function mergeHooksConfig(existing, command) {
       statusMessage: HOOK_STATUS,
     }],
   };
-  config.hooks = {...hooks, PostToolUse: [...kept, group]};
-  return {config, groupIndex: kept.length, handlerIndex: 0};
+  config.hooks = {...hooks};
+  let groupIndex = 0;
+  for (const event of WORKFLOW_EVENTS) {
+    if (hooks[event] !== undefined && !Array.isArray(hooks[event])) throw new Error(`hooks.json has a non-array "hooks.${event}" value`);
+    const kept = (hooks[event] ?? []).filter(item => !isToolseedGroup(item));
+    if (event === 'PostToolUse') groupIndex = kept.length;
+    const current = structuredClone(group);
+    if (event !== 'PostToolUse') delete current.matcher;
+    if (['Interrupt', 'SessionEnd'].includes(event)) current.hooks[0].timeout = 3;
+    config.hooks[event] = [...kept, current];
+  }
+  return {config, groupIndex, handlerIndex: 0, events: WORKFLOW_EVENTS};
 }
 
 export function replaceAgentsBlock(text, block) {
@@ -101,7 +114,7 @@ export function agentBlock(mcpServer) {
   return `${AGENTS_BEGIN}
 ## ToolSeed capability reuse
 
-When a blocker repeats or a fix looks reusable, load the installed \`toolseed\` skill through Codex's Skill mechanism and use the configured ToolSeed MCP server (\`${prefix}toolbox_search\`, \`${prefix}toolbox_run\`, \`${prefix}toolbox_save\`). Search before inventing a new method; check applicability, permissions and limits; save only after the method is actually validated and worth reusing. A search hit or delivered guidance is not task success.
+When repeated blockers, costly diagnosis or clear future reuse justify it, load the installed \`toolseed\` Skill. Consider Hook recall cards before choosing a method; they are actual local searches, so reuse an equivalent search already supplied. Read full guidance through \`${prefix}toolbox_run\`, check applicability and permissions, then apply it with authorized host tools. Use \`${prefix}toolbox_learn\` to retain validated methods, failure lessons or tool recipes only when worthwhile. After actual reuse, append observations or propose an amendment on the original capability using the delivered invocation/version/hash. Prefer updating existing capabilities to duplicates. Search hits, delivery and activity alone do not prove adoption or task success.
 ${AGENTS_END}`;
 }
 
@@ -199,13 +212,12 @@ function entriesOf(result, key) {
   return entries.flatMap(entry => Array.isArray(entry?.[key]) ? entry[key] : []);
 }
 
-function findHook(hooks, hooksPath, command) {
+function findHooks(hooks, hooksPath) {
   const normalizedPath = resolve(hooksPath);
-  return hooks.find(hook => resolve(String(hook?.sourcePath ?? '')) === normalizedPath
+  return hooks.filter(hook => resolve(String(hook?.sourcePath ?? '')) === normalizedPath
     && (String(hook?.command ?? '').includes('toolseed-hook.mjs')
       || String(hook?.commandWindows ?? '').includes('toolseed-hook.mjs')
-      || hook?.statusMessage === HOOK_STATUS
-      || String(command).includes('toolseed-hook.mjs'))) ?? null;
+      || hook?.statusMessage === HOOK_STATUS));
 }
 
 function checkProjectMcp(cwd, mcpServer) {
@@ -249,7 +261,8 @@ export async function installCodexAdapter(options = {}) {
   const configPath = join(codexHome, 'config.toml');
   const stateDir = resolve(options.stateDir ?? defaultStateDir(codexHome));
   const logDir = resolve(options.logDir ?? defaultLogDir(codexHome));
-  const command = buildHookCommand({nodePath, hookScript, mcpServer, stateDir, logDir});
+  const python = options.python ?? process.env.TOOLSEED_PYTHON ?? 'python';
+  const command = buildHookCommand({nodePath, hookScript, mcpServer, stateDir, logDir, python, dataDir});
   const agentText = agentBlock(mcpServer);
   const agentsEnabled = options.agentsMd !== false;
   const skillText = readFileSync(skillSource, 'utf8');
@@ -277,6 +290,7 @@ export async function installCodexAdapter(options = {}) {
     codex: codex ?? null,
     codex_version: null,
     node: nodePath,
+    python,
     hook_command: command,
     files: {
       skill: skillTarget,
@@ -322,39 +336,42 @@ export async function installCodexAdapter(options = {}) {
     });
     plan.codex_version = query.version;
     const hooks = entriesOf(query.results[0], 'hooks');
-    const hook = findHook(hooks, hooksPath, command);
+    const selectedHooks = findHooks(hooks, hooksPath);
+    const hook = selectedHooks[0];
     const skills = entriesOf(query.results[1], 'skills');
-    plan.checks.hook_listed = Boolean(hook);
+    plan.checks.hook_listed = selectedHooks.length >= WORKFLOW_EVENTS.length;
+    plan.checks.hook_count = selectedHooks.length;
     plan.checks.skill_active = skillIsActive(skills);
-    if (!hook) {
+    if (!hook || !plan.checks.hook_listed) {
       plan.trust = {status: 'skipped', reason: 'hook was not listed by Codex'};
     } else if (options.trust === false) {
       plan.trust = {status: 'skipped', key: hook.key, hash: hook.currentHash,
         reason: 'trust disabled by --no-trust; approve the hook in Codex'};
     } else {
       try {
-        const keyPath = `hooks.state.${JSON.stringify(hook.key)}.trusted_hash`;
         const write = await queryCodexAppServer({
           codex,
           codexHome,
           cwd,
           calls: [
             {method: 'config/batchWrite', params: {
-              edits: [{keyPath, mergeStrategy: 'upsert', value: hook.currentHash}],
+              edits: selectedHooks.map(item => ({keyPath: `hooks.state.${JSON.stringify(item.key)}.trusted_hash`,
+                mergeStrategy: 'upsert', value: item.currentHash})),
               reloadUserConfig: true,
             }},
             {method: 'hooks/list', params: {cwds: [cwd]}},
           ],
         });
         const status = write.results[0]?.response?.result?.status;
-        const verifiedHook = findHook(entriesOf(write.results[1], 'hooks'), hooksPath, command);
-        if (status !== 'ok' || verifiedHook?.trustStatus !== 'trusted') {
+        const verifiedHooks = findHooks(entriesOf(write.results[1], 'hooks'), hooksPath);
+        if (status !== 'ok' || verifiedHooks.length < WORKFLOW_EVENTS.length || verifiedHooks.some(item => item.trustStatus !== 'trusted')) {
           plan.trust = {status: 'failed', key: hook.key, hash: hook.currentHash,
             method: 'app_server.config/batchWrite',
             reason: 'Codex did not report trustStatus=trusted after config/batchWrite'};
         } else {
           plan.trust = {status: 'trusted', key: hook.key, hash: hook.currentHash,
-            method: 'app_server.config/batchWrite', trust_status: verifiedHook.trustStatus};
+            method: 'app_server.config/batchWrite', trust_status: 'trusted',
+            keys: verifiedHooks.map(item => ({key: item.key, hash: item.currentHash}))};
         }
       } catch (error) {
         plan.trust = {status: 'written-unverified', key: hook.key, hash: hook.currentHash,
@@ -382,16 +399,17 @@ export function removeAgentsBlock(text) {
 export function removeHooksConfig(existing) {
   const config = isPlainObject(existing) ? structuredClone(existing) : {};
   const hooks = isPlainObject(config.hooks) ? config.hooks : {};
-  const groups = Array.isArray(hooks.PostToolUse) ? hooks.PostToolUse : [];
-  const kept = groups.filter(group => !isToolseedGroup(group));
-  const removed = groups.length - kept.length;
-  if (kept.length) config.hooks = {...hooks, PostToolUse: kept};
-  else {
-    const remaining = {...hooks};
-    delete remaining.PostToolUse;
-    if (Object.keys(remaining).length) config.hooks = remaining;
-    else delete config.hooks;
+  let removed = 0;
+  const remaining = {...hooks};
+  for (const event of WORKFLOW_EVENTS) {
+    const groups = Array.isArray(hooks[event]) ? hooks[event] : [];
+    const kept = groups.filter(group => !isToolseedGroup(group));
+    removed += groups.length - kept.length;
+    if (kept.length) remaining[event] = kept;
+    else delete remaining[event];
   }
+  if (Object.keys(remaining).length) config.hooks = remaining;
+  else delete config.hooks;
   return {config, removed};
 }
 
@@ -478,6 +496,7 @@ async function main() {
       'mcp-server': {type: 'string', default: 'toolseed'},
       codex: {type: 'string'},
       node: {type: 'string'},
+      python: {type: 'string'},
       'skill-source': {type: 'string'},
       'hook-script': {type: 'string'},
       'no-agents-md': {type: 'boolean', default: false},
@@ -506,6 +525,7 @@ async function main() {
       mcpServer: values['mcp-server'],
       codex: values.codex,
       nodePath: values.node,
+      python: values.python,
       skillSource: values['skill-source'],
       hookScript: values['hook-script'],
       trust: values['no-trust'] ? false : true,
