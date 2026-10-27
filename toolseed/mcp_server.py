@@ -1,6 +1,6 @@
 """Official MCP stdio server for ToolSeed.
 
-Uses the Model Context Protocol Python SDK (`mcp`), exposing exactly the four
+Uses the Model Context Protocol Python SDK (`mcp`), exposing the five
 public ToolSeed tools. The Core remains independent of the SDK; this module is
 only a transport adapter.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 import threading
-from typing import Any
+from typing import Annotated, Any
 
 _MCPServer: Any
 try:
@@ -18,10 +18,13 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised without SDK
     _MCPServer = None
     _MCP_IMPORT_ERROR: ModuleNotFoundError | None = exc
 else:
+    from pydantic import Field
+
     _MCPServer = _ImportedMCPServer
     _MCP_IMPORT_ERROR = None
 
 from .core.api import ToolSeed
+from .core.learning import EXPERIENCE_SCHEMA
 from .core.storage import MigrationConflict
 
 _CORE: ToolSeed | None = None
@@ -56,7 +59,14 @@ def create_server(core: ToolSeed | None = None) -> Any:
         query: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Find ready procedures that may apply to the current sub-problem."""
+        """Find ready procedures that may apply to the current sub-problem.
+
+        Normal search accepts query and optional environment/namespace context.
+        For automatic recall, context.recall is {phase: task|error|tools,
+        tool_hints?: string[], error_codes?: string[]}. This conservative mode
+        returns at most two strong lexical matches with recall_match reasons;
+        it does not establish applicability or execute the returned methods.
+        """
         return call(ToolSeed.toolbox_search, query, context)
 
     @server.tool()
@@ -81,6 +91,31 @@ def create_server(core: ToolSeed | None = None) -> Any:
     def toolbox_stats() -> dict[str, Any]:
         """Read capability, search, delivery and evidence statistics."""
         return call(ToolSeed.toolbox_stats)
+
+    @server.tool()
+    def toolbox_learn(
+        experience: Annotated[dict[str, Any], Field(json_schema_extra=EXPERIENCE_SCHEMA)],
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Keep a worthwhile observed method, failure lesson or tool recipe.
+
+        Search existing capabilities first; skip trivial work. Required experience:
+        problem, when_to_use, method, reuse_reason, validation (actual observations
+        and limits, not a claim of general success). Optional pitfalls contain
+        attempt/observed/lesson; tool_recipes contain purpose/tool_hint/usage/check.
+        Include checks, triggers, not_for, tags, applicability and source_refs as
+        useful. To revise, pass target_capability_id and the COMPLETE updated
+        method; revisions remain candidates until separately promoted. This tool
+        never runs scripts or turns agent observations into verified task success.
+
+        After reuse, instead pass target_capability_id, reuse, validation and
+        reuse_reason. reuse requires invocation_id/version_id/content_hash from
+        toolbox_run, application (applied|partial|not_applied) and actions (what
+        was actually used or why not). Optional amendment adds guidance/checks/
+        not_for to that exact current version as a candidate. Without amendment,
+        this appends observations only, preserving the method and capability ID.
+        """
+        return call(ToolSeed.toolbox_learn, experience, context)
 
     return server
 

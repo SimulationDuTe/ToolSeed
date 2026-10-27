@@ -3,7 +3,43 @@
 Local, unpublished plugin for **DeepSeek Harness Desktop 0.2.1-rc.2**. Uses the
 official `settings.section` slot and `connection.fetch.register`
 owner-admitted transport (HTTP on Web, IPC on Desktop). No DSH source changes,
-browser launch, model calls, extra MCP tool or listening service.
+browser launch, model calls, extra MCP tool or listening service. The recall
+hook invokes the existing search tool through the scoped host tool runtime.
+
+## Proactive capability recall
+
+`recall: true` (default) searches before a normal model step using the current
+task, a new tool error, or newly observed tool names. Up to two matching cards
+are supplied without requiring the model to initiate search. The model decides
+whether to read and apply a complete method. No extra model call, automatic
+capability execution, forced continuation or first-call interception occurs.
+
+Search passes the Agent scope, host permission pipeline and cancellation signal.
+There are at most three searches per turn, a 1.5-second timeout, query and version
+deduplication, and no injected message for empty/weak matches. A failed/timed-out
+search disables further automatic recall for that turn. Optional `recallNamespace`
+adds the named workspace scope to the global library; it is not a data directory.
+See [proactive recall](../../docs/PROACTIVE-RECALL.md) for matching and limitations.
+
+## Experience learning
+
+`learning: true` (default) adds a bounded cue in an already admitted Agent step
+after a failure followed by a normal tool return, six returns across three tools,
+or a user follow-up after tool activity. The host model decides whether to skip,
+reuse, revise or save a method, failure lesson or tool recipe using `toolbox_learn`.
+The hook never calls a model/tool itself and does not claim success or infer a
+root cause. It retains only bounded activity metadata, not arguments/results/user
+text. After guidance delivery and subsequent activity, it can prompt the model
+to append invocation-bound observations or propose an amendment on that same
+capability through `toolbox_learn`. One general learning hint and one reuse-update
+hint per turn; no forced task-end continuation or persistent backlog. See
+[reuse updates](../../docs/REUSE-UPDATES.md) for binding and revision behavior.
+
+Restart the ToolSeed MCP process to discover the new tool, reload this plugin,
+and sync the packaged ToolSeed Skill through the existing installer. Set
+`learning: false` to disable this hook. Set `opportunities: false`,
+`learning: false`, `recall: false` and `revisionValidation: false` to retain only the panel. See
+[experience learning](../../docs/EXPERIENCE-LEARNING.md) for the API and boundaries.
 
 ## P1-A opportunity hints
 
@@ -33,7 +69,7 @@ MCP server, load Skills on the Agent's behalf, or install a model provider. If t
 tool is hidden/absent, a signal is logged as `prompt_unavailable`, not a search.
 If Agent/tools services are absent, optional Cordis injection stays inactive and
 the existing read-only panel works. Set `opportunities: false` in the plugin's
-official profile config to retain only the panel. Restart DSH after code/config
+official profile config to disable the repeated-failure hint. Restart DSH after code/config
 updates; the existing installer need not be rerun for a local package link.
 
 The hint asks the Agent to actually load applicable Skills, search with an object
@@ -144,13 +180,22 @@ the registered Fetch handler. Only five predefined management query routes exist
 All are reads. Unknown fields, arbitrary Python commands and data-directory changes
 are rejected. Error responses do not return subprocess stderr.
 
-No Store initialization, database migration, capability execution or management
+The settings UI performs no Store initialization, database migration, capability execution or management
 mutation. Lifecycle restrictions on procedure content match the existing Inspector.
 Evidence gaps remain unknown; a delivery or failed tool invocation is not a task
 success/failure. Schema remains v6. Empty/missing/old/corrupt databases are explained
 without automatically creating or repairing them.
 
 ## Verify
+
+The optional `revisionValidation` feature (default `true`) registers the native
+`toolseed_validate_revision` tool. It inspects a candidate, runs model-selected
+new/regression cases through the scoped host tool runtime, and activates only
+after all assertions pass against the unchanged base. Failed cases are retained
+and the current version remains available. This tool uses fixed local management
+bridge operations with the configured `python` and MCP-matching `dataDir`; the
+settings UI remains read-only. See [revision activation](../../docs/REVISION-ACTIVATION.md).
+The five public MCP tools remain unchanged; the native validator is DSH-specific.
 
 ```powershell
 node integrations/dsh/build.mjs

@@ -1,13 +1,13 @@
 {
   "name": "dsh-toolseed",
   "version": "0.1.0",
-  "description": "ToolSeed read-only management and opportunity hints for DeepSeek Harness",
+  "description": "ToolSeed capability management, reuse and experience learning for DeepSeek Harness",
   "type": "module",
   "engines": {"dsh": "0.2.1-rc.2"},
   "main": "index.js",
   "exports": {".": "./index.js", "./client": "./lib/client.js"},
   "scripts": {"build": "node build.mjs", "test": "node --test test/*.test.mjs"},
-  "files": ["index.js", "backend.js", "opportunities.js", "opportunity-diagnostics.js", "lib/client.js", "cordis.patch.yml", "README.md"],
+  "files": ["index.js", "backend.js", "opportunities.js", "learning.js", "recall.js", "revisions.js", "opportunity-diagnostics.js", "lib/client.js", "cordis.patch.yml", "README.md"],
   "peerDependencies": {"@deepseek-ai/cordis": "~4.0.5", "@deepseek-ai/schemastery": "~3.18.5"},
   "dsh": {"bundle": {"patch": "cordis.patch.yml"}, "client": {"platform": "web", "inject": [
     "@deepseek-ai/dsh-client-ui-settings-general", "@deepseek-ai/dsh-client-ui-theme",

@@ -1,5 +1,11 @@
 # ToolSeed P0-Slim — 当前实现规范
 
+> **后续增量：** 2026-10-25 的[经验学习入口](EXPERIENCE-LEARNING.md)将公共接口扩展为五个，
+> 新增 `toolbox_learn`，替代下文 P0 阶段“四个固定工具”的数量限制；其余存储、权限和版本门禁继续沿用。
+> 2026-10-26 的[修订生效](REVISION-ACTIVATION.md)增加一个可选的 DSH 原生验证入口，
+> 通过宿主执行模型选择的检查，全部通过后沿用 Core 晋升门禁切换版本；Core 不执行方法或检查代码。
+> 这是固定的宿主适配能力，不为每条入库能力注册工具；MCP 仍为五个。
+
 > **本文件是 P0 的唯一实现与验收依据。** 长期设计见 [`DESIGN.md`](DESIGN.md)。若范围不一致，以本文件为准。不得仅因为 DESIGN 中描述未来能力，就把它们添加到 P0。
 >
 > **目标：** 用最小实现验证程序性能力能否被可靠保存、检索、交付，并在后续任务中产生可测量的复用收益。
@@ -68,8 +74,19 @@ P0 采用单进程本地 Core + 一个 Harness Adapter + 一个本地持久化�
 - `context` 可提供已知环境/适用条件；没有的数据必须保持未知，不得猜测。
 - 先过滤非 `ready` 版本、已退役/整体隔离的能力与明确不适用条件，再按名称、标签、描述和内容关键词进行本地检索；P0 不调用 LLM。
 - 默认返回 1–3 条，最多 5 条；结果不足时可返回空数组。
-- 每条结果只包含 ID、名称、短描述、适用/不适用摘要、版本号和简短内容摘要，不返回全量历史或不相关源码。
-- 明确的 `capability_id` 直接查询；同一任务在查询和上下文未变时由 Agent 复用已返回结果，不强制 Core 建缓存。
+- 每条结果包含 ID、名称、短描述、适用/不适用摘要、版本号、内容哈希和简短内容摘要，并返回 `applicability`、`applicability_check` 与 `verification_summary`；不返回全量历史或不相关源码。
+- 明确的 `capability_id` 直接查询用于查看；已知环境冲突会标为 `incompatible`，不会被伪装成兼容推荐。同一任务在查询和上下文未变时由 Agent 复用已返回结果，不强制 Core 建缓存。
+
+结构化适用条件：`harnesses` 与 `operating_systems` 各自是可选项（any-of），
+`required_tools` 是全部需要（all-of）。`context` 中的非空工具清单默认完整；仅掌握部分工具时
+必须传 `required_tools_complete: false`，缺项保持未知。缺失、空或格式错误的环境信息保持未知；
+显式 `required_tools: []` 配合 `required_tools_complete: true` 表示确认没有工具。
+该标记只属于查询 context / 交付 options，不增加 Manifest 字段。
+
+`applicability_check.status` 为 `compatible`、`incompatible`、`unknown` 或 `undeclared`，
+另含 `conflicting_fields` / `unknown_fields`。它只判断声明的环境，不验证自然语言 `not_for`、
+权限或当前任务适用性。`verification_summary` 为 `unverified`、`recorded` 或 `invalid`；
+`recorded` 只表示有记录，包含最新结果、来源声明、有效性、哈希匹配和有限案例范围，不表示当前任务成功。
 
 示例：
 
@@ -144,6 +161,10 @@ P0 采用单进程本地 Core + 一个 Harness Adapter + 一个本地持久化�
 
 `ready` 只表示通过 P0 的结构门槛并允许被作为指引发现，不表示其内容经过外部事实核实，也不保证它适用于所有任务。缺少必要字段或需要人工判断的内容可保留为 `candidate`。发现明显安全/完整性风险时必须拒绝或隔离，不能为了闭环而自动发布。
 
+内容扫描允许完整、无条件的明确禁止语句（例如“不要绕过权限。”）；带条件例外、引用的反例
+或无法明确判断的否定语句保留为待审 `candidate`。逐项检查全文命中，不能用一条禁止语句掩盖
+另一条行动指令；真实凭据仍拒绝保存。待审内容不能仅靠验证记录晋升，须消除内容审阅触发条件。
+
 ### 4.3 `toolbox_run(capability, args?, options?)`
 
 P0 中，`toolbox_run` **只交付 procedure 指引，不执行代码、不调用 Shell、不自动执行指引中的步骤**。
@@ -151,6 +172,9 @@ P0 中，`toolbox_run` **只交付 procedure 指引，不执行代码、不调�
 - 解析稳定 `capability_id`；含糊名称不得猜测。
 - 只交付能力未退役/整体隔离时该能力的当前 `ready` 版本；旧结果或直接 ID 不得绕过当前状态检查。
 - 返回 `mode=agent_guided`、`execution_status=guidance_delivered`、能力/版本/调用 ID 与 Procedure 正文。
+- `options` 可传与 search context 相同的环境字段；交付重新检查条件，已知冲突返回
+  `CONTRACT_VIOLATION` / `APPLICABILITY_MISMATCH`，不创建 Invocation。未知不作为已兼容。
+- 交付返回内容哈希，`result` 同时含适用条件、条件检查和验证摘要，语义与搜索卡片一致。
 - 交付前记录一次 invocation；交付行为本身不是任务成功证据。
 - Procedure 文本须明确标识为能力内容，不得执行其中要求违反更高优先级指令、泄露秘密或绕过授权的内容。
 

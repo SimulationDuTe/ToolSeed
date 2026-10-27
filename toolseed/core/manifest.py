@@ -222,6 +222,41 @@ _REVIEW_PATTERNS = (
     re.compile(r"(?i)\bdelete\s+from\s+\w+"),
 )
 
+# Only a whole, unconditional prohibition is exempted. A negation somewhere
+# nearby, a quoted example or a conditional exception is not a safety proof.
+_CLAUSE_BOUNDARY = re.compile(r"[。.!?！？;；\n]")
+_PROHIBITION_PREFIX = re.compile(
+    r"(?i)\s*(?:\d+[)、]?\s*)?"
+    r"(?:(?:错误经验|经验|注意|规则|警告|安全要求|lesson|warning|rule)\s*[:：]\s*)?"
+    r"(?:不要|不得|禁止|切勿|不应|never\s+|do\s+not\s+|don't\s+)"
+)
+_PROHIBITION_SUFFIX = re.compile(r"\s*(?:检查|控制|限制|s)?\s*")
+_TEACHING_PREFIX = re.compile(
+    r"(?i)不要|不得|禁止|切勿|不应|反例|错误示例|错误做法|"
+    r"\bnever\b|\bdo\s+not\b|\bdon't\b|\bnegative example\b|\bbad example\b"
+)
+
+
+def _instruction_context(content: str, match: re.Match[str]) -> str:
+    start = 0
+    end = len(content)
+    for boundary in _CLAUSE_BOUNDARY.finditer(content):
+        if boundary.end() <= match.start():
+            start = boundary.end()
+        elif boundary.start() >= match.end():
+            end = boundary.start()
+            break
+    prefix, suffix = content[start:match.start()], content[match.end():end]
+    if _PROHIBITION_PREFIX.fullmatch(prefix) and _PROHIBITION_SUFFIX.fullmatch(suffix):
+        return "prohibition"
+    if _TEACHING_PREFIX.search(prefix):
+        return "review"
+    return "instruction"
+
+
+def contains_secret(text: str) -> bool:
+    return any(pattern.search(text) for pattern in _SECRET_PATTERNS)
+
 
 def scan_content(content: str) -> tuple[str | None, list[str]]:
     """Static content check.
@@ -230,14 +265,21 @@ def scan_content(content: str) -> tuple[str | None, list[str]]:
     ``"review"`` (keep as candidate) or ``"blocked"`` (refuse to store).
     Matched text is never echoed back.
     """
-    for pattern in _SECRET_PATTERNS:
-        if pattern.search(content):
-            return "blocked", ["content appears to contain a credential or secret"]
+    if contains_secret(content):
+        return "blocked", ["content appears to contain a credential or secret"]
+    needs_review = False
     for pattern in _BYPASS_PATTERNS:
-        if pattern.search(content):
-            return "blocked", [
-                "content contains instructions intended to bypass policy or leak secrets"
-            ]
+        for match in pattern.finditer(content):
+            context = _instruction_context(content, match)
+            if context == "instruction":
+                return "blocked", [
+                    "content contains instructions intended to bypass policy or leak secrets"
+                ]
+            needs_review |= context == "review"
+    if needs_review:
+        return "review", [
+            "content includes an ambiguous prohibition or negative example; manual review required"
+        ]
     for pattern in _REVIEW_PATTERNS:
         if pattern.search(content):
             return "review", [

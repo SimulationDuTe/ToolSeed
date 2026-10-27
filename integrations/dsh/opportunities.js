@@ -18,7 +18,7 @@ export function opportunityHint(searchName, saveName) {
 // The installed DSH MCP adapter returns {content, structuredContent?} as its
 // canonical value. Inspect only this configured server's bounded JSON envelope;
 // never retain arguments, error messages, prompts, procedure bodies or results.
-function toolseedBody(result) {
+export function toolseedBody(result) {
   if (result?.isError !== false) return undefined;
   const value = result.value;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
@@ -38,7 +38,7 @@ function toolseedBody(result) {
 export function installOpportunityHooks(ctx, {mcpServer = 'toolseed', opportunityDiagnostics = false} = {}) {
   // These clean, short names do not enter DSH's hashed-name normalization path.
   if (!/^[A-Za-z0-9_-]{1,32}$/.test(mcpServer)) throw new Error('Invalid ToolSeed MCP server name');
-  const names = Object.fromEntries(['search', 'save', 'run', 'stats'].map(
+  const names = Object.fromEntries(['search', 'save', 'run', 'stats', 'learn'].map(
     key => [key, `mcp__${mcpServer}__toolbox_${key}`]));
   const states = new WeakMap();
   // Cordis may trace Session objects through different scoped proxies. Correlate
@@ -76,10 +76,11 @@ export function installOpportunityHooks(ctx, {mcpServer = 'toolseed', opportunit
       // A post-signal search in the same turn already supplied the opportunity.
       // This does not assert its query was relevant, or that any hit was adopted.
       if (state.opportunityId) state.searchObserved = true;
-    } else if (kind === 'save') {
+    } else if (kind === 'save' || kind === 'learn') {
       const stored = !failed && body?.status === 'accepted'
         && typeof body.capability_id === 'string' && typeof body.version_id === 'string';
-      log(failed ? 'save_failed' : stored ? (body.duplicate === true ? 'existing_version_returned' : 'capability_saved') : 'save_result_unknown', state, links);
+      log(failed ? 'save_failed' : stored ? (body.learning_action === 'observation_added' ? 'reuse_observation_saved'
+        : body.duplicate === true ? 'existing_version_returned' : 'capability_saved') : 'save_result_unknown', state, links);
     } else {
       log(failed ? 'delivery_failed' : body?.execution_status === 'guidance_delivered'
         ? 'guidance_delivered' : 'delivery_result_unknown', state, links);

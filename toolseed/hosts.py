@@ -6,7 +6,9 @@ instead of being presented as a stable version.
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
+import io
 import json
 import os
 import re
@@ -39,6 +41,9 @@ TREE_PATHS = (
     "integrations/dsh/index.js",
     "integrations/dsh/backend.js",
     "integrations/dsh/opportunities.js",
+    "integrations/dsh/learning.js",
+    "integrations/dsh/recall.js",
+    "integrations/dsh/revisions.js",
     "integrations/dsh/opportunity-diagnostics.js",
     "integrations/dsh/cordis.patch.yml",
     "integrations/dsh/install.ps1",
@@ -47,6 +52,39 @@ TREE_PATHS = (
     "integrations/dsh/build.mjs",
     "integrations/dsh/src/",
 )
+
+
+def package_dsh_plugin(plugin_dir: Path) -> Path:
+    """Build a content-addressed local package; directory links lose host peers."""
+    plugin_dir = plugin_dir.resolve()
+    package = json.loads((plugin_dir / "package.json").read_text(encoding="utf-8"))
+    files = sorted({"package.json", *package["files"]})
+    payloads: list[tuple[str, bytes]] = []
+    digest = hashlib.sha256()
+    for relative in files:
+        path = (plugin_dir / relative).resolve()
+        if not path.is_relative_to(plugin_dir) or not path.is_file():
+            raise HostInstallError("INVALID_PACKAGE", f"无效的插件打包文件：{relative}")
+        data = path.read_bytes()
+        digest.update(relative.encode("utf-8") + b"\0" + data)
+        payloads.append((relative, data))
+    target = plugin_dir.parent / f"dsh-toolseed-{digest.hexdigest()[:16]}.tgz"
+    buffer = io.BytesIO()
+    with (
+        gzip.GzipFile(fileobj=buffer, mode="wb", filename="", mtime=0) as zipped,
+        tarfile.open(fileobj=zipped, mode="w") as archive,
+    ):
+        for relative, data in payloads:
+            info = tarfile.TarInfo("package/" + Path(relative).as_posix())
+            info.size = len(data)
+            info.mode = 0o644
+            archive.addfile(info, io.BytesIO(data))
+    content = buffer.getvalue()
+    if not target.exists() or target.read_bytes() != content:
+        temporary = target.with_suffix(".tmp")
+        temporary.write_bytes(content)
+        temporary.replace(target)
+    return target
 
 
 class HostInstallError(RuntimeError):

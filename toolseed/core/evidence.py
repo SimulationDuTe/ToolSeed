@@ -35,10 +35,13 @@ FAILURE_CATEGORIES = (
     "security_or_integrity_violation",
     "task_outcome_unknown",
     "task_failure_attributed",
+    "task_failure_unattributed",
     "external_environment_failure",
 )
 
 EVENT_PROCEDURE_SAVED = "procedure_saved"
+EVENT_EXPERIENCE_LEARNED = "experience_learned"
+EVENT_REUSE_LEARNED = "reuse_learned"
 EVENT_SEARCH = "search_performed"
 EVENT_DELIVERED = "procedure_delivered"
 EVENT_TASK_OUTCOME = "task_outcome_signal"
@@ -72,6 +75,43 @@ def make_signal_key(payload: dict[str, Any]) -> str:
 class Evidence:
     def __init__(self, store: Store) -> None:
         self.store = store
+
+    def learning_summary(self, version_id: str) -> dict[str, Any] | None:
+        """Latest bounded host-model observation; explicitly not verification."""
+        row = self.store.db.execute(
+            "SELECT event_id, summary FROM evidence_events WHERE version_id = ? "
+            "AND event_type = ? ORDER BY rowid DESC LIMIT 1",
+            (version_id, EVENT_EXPERIENCE_LEARNED),
+        ).fetchone()
+        if row is None:
+            return None
+        observation = json.loads(row["summary"])
+        return {"event_id": row["event_id"], "source_type": "agent", "independently_verified": False,
+                "reuse_reason": observation["reuse_reason"], "validation": observation["validation"],
+                "source_refs": observation["source_refs"]}
+
+    def reuse_summary(self, version_id: str) -> dict[str, Any]:
+        """Bounded recent reuse observations on exactly this version, not verdicts."""
+        rows = self.store.db.execute(
+            "SELECT e.event_id, e.invocation_id, e.summary FROM evidence_events e "
+            "WHERE e.version_id = ? AND e.event_type = ? AND NOT EXISTS ("
+            "SELECT 1 FROM evidence_events newer WHERE newer.event_type = e.event_type "
+            "AND newer.invocation_id = e.invocation_id AND newer.rowid > e.rowid) "
+            "ORDER BY e.rowid DESC LIMIT 3", (version_id, EVENT_REUSE_LEARNED),
+        ).fetchall()
+        items = []
+        for row in rows:
+            data = json.loads(row["summary"])
+            if not data["surface_allowed"]:
+                continue
+            revision_id = data["revision_version_id"]
+            revision = self.store.db.execute("SELECT status FROM capability_versions WHERE version_id = ?", (revision_id,)).fetchone() if revision_id else None
+            items.append({"event_id": row["event_id"], "invocation_id": row["invocation_id"],
+                          "application": data["reuse"]["application"], "actions": data["reuse"]["actions"][:300],
+                          "validation": data["validation"][:500], "reuse_reason": data["reuse_reason"][:200],
+                          "revision_version_id": revision_id, "revision_status": revision["status"] if revision else None,
+                          "revision_verification": self.verification_summary(revision_id) if revision else None})
+        return {"source_type": "agent", "independently_verified": False, "observations": items}
 
     def record(
         self,
@@ -221,6 +261,81 @@ class Evidence:
             )
         return invocation_id
 
+    def record_outcome(
+        self, *, capability_id: str, version_id: str, content_hash: str,
+        invocation_id: str, outcome: str, source_type: str,
+        task_id: str | None, summary: str | None,
+    ) -> tuple[str, bool]:
+        """One signal per invocation/source/outcome, including legacy retries.
+
+        Task labels and prose are annotations, not independent observations.
+        Historical events are never rewritten to add an idempotency key.
+        """
+        signal_key = make_signal_key({
+            "kind": EVENT_TASK_OUTCOME, "capability_id": capability_id,
+            "version_id": version_id, "content_hash": content_hash,
+            "invocation_id": invocation_id, "outcome": outcome, "source_type": source_type,
+        })
+        with self.store.transaction(immediate=True) as db:
+            existing = db.execute(
+                "SELECT event_id FROM evidence_events WHERE event_type = ? "
+                "AND capability_id = ? AND version_id = ? AND invocation_id = ? "
+                "AND outcome = ? AND source_type = ? "
+                "AND (content_hash IS NULL OR content_hash = ?) ORDER BY rowid LIMIT 1",
+                (EVENT_TASK_OUTCOME, capability_id, version_id, invocation_id, outcome,
+                 source_type, content_hash),
+            ).fetchone()
+            if existing is not None:
+                return existing["event_id"], True
+            event_id = self.record(
+                EVENT_TASK_OUTCOME, capability_id=capability_id, version_id=version_id,
+                content_hash=content_hash, invocation_id=invocation_id, outcome=outcome,
+                source_type=source_type, task_id=task_id, summary=summary, quantity=1,
+                signal_key=signal_key,
+            )
+        return event_id, False
+
+    def verification_summary(self, version_id: str) -> dict[str, Any]:
+        """Bounded latest evidence, not proof of current task fit or success."""
+        row = self.store.db.execute(
+            "SELECT e.*, v.content_hash AS version_hash, "
+            "(SELECT a.validity FROM evidence_validity_assessments a "
+            "WHERE a.evidence_id = e.event_id ORDER BY a.rowid DESC LIMIT 1) AS validity "
+            "FROM evidence_events e JOIN capability_versions v ON v.version_id = e.version_id "
+            "WHERE e.event_type = ? AND e.version_id = ? ORDER BY e.rowid DESC LIMIT 1",
+            (EVENT_VERSION_VERIFICATION, version_id),
+        ).fetchone()
+        if row is None:
+            return {"status": "unverified"}
+        try:
+            payload = json.loads(row["verification_json"] or "{}")
+        except (TypeError, ValueError):
+            payload = None
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(payload.get("verification_ref"), str)
+            or not isinstance(payload.get("case_ids"), list)
+            or any(not isinstance(case, str) for case in payload.get("case_ids", []))
+        ):
+            return {"status": "invalid", "event_id": row["event_id"],
+                    "reason": "invalid_verification_record"}
+        cases = payload.get("case_ids", [])
+        reference = payload.get("verification_ref", "")
+        return {
+            "status": "recorded",
+            "event_id": row["event_id"],
+            "outcome": row["verification_outcome"],
+            "source_type": row["source_type"],
+            "validity": row["validity"] or "unassessed",
+            "content_hash_matches": row["content_hash"] == row["version_hash"],
+            "verification_ref": reference[:240],
+            "scope": "recorded_cases_only",
+            "case_count": len(cases),
+            "case_ids": [case[:120] for case in cases[:5]],
+            "details_truncated": len(reference) > 240 or len(cases) > 5
+            or any(len(case) > 120 for case in cases[:5]),
+        }
+
     def event_counts(self) -> dict[str, int]:
         return {
             row["event_type"]: int(row["n"])
@@ -236,11 +351,18 @@ class Evidence:
         ).fetchone()
         return int(row["n"] or 0)
 
-    def outcome_counts(self) -> dict[str, int]:
+    def outcome_counts(self, version_id: str | None = None) -> dict[str, int]:
         counts = {outcome: 0 for outcome in OUTCOMES}
+        where = "event_type = ?"
+        params = [EVENT_TASK_OUTCOME]
+        if version_id is not None:
+            where += " AND version_id = ?"
+            params.append(version_id)
         for row in self.store.db.execute(
-            "SELECT outcome, COUNT(*) AS n FROM evidence_events WHERE event_type = ? GROUP BY outcome",
-            (EVENT_TASK_OUTCOME,),
+            "SELECT outcome, COUNT(*) AS n FROM (SELECT outcome FROM evidence_events WHERE "
+            + where + " GROUP BY capability_id, version_id, COALESCE(invocation_id, event_id), "
+            "source_type, outcome) GROUP BY outcome",
+            params,
         ).fetchall():
             counts[row["outcome"]] = int(row["n"])
         return counts
@@ -503,22 +625,47 @@ class Evidence:
 
     def maintenance_report(self, failure_threshold: int = 2) -> dict[str, Any]:
         validity = self.validity_counts()
-        repeated = [
-            {
-                "capability_id": row["capability_id"],
-                "version_id": row["version_id"],
-                "failures": int(row["n"]),
-                "suggested_category": "task_failure_attributed",
+        groups: dict[tuple[str, str], dict[str, Any]] = {}
+        rows = self.store.db.execute(
+            "SELECT e.*, i.task_id AS invocation_task_id, "
+            "(SELECT a.validity FROM evidence_validity_assessments a "
+            "WHERE a.evidence_id = e.event_id ORDER BY a.rowid DESC LIMIT 1) AS validity "
+            "FROM evidence_events e JOIN invocations i ON i.invocation_id = e.invocation_id "
+            "JOIN capability_versions v ON v.version_id = e.version_id "
+            "WHERE e.event_type = ? AND e.outcome = 'failure' "
+            "AND i.capability_id = e.capability_id AND i.version_id = e.version_id "
+            "AND v.capability_id = e.capability_id "
+            "AND (e.content_hash IS NULL OR e.content_hash = v.content_hash)",
+            (EVENT_TASK_OUTCOME,),
+        ).fetchall()
+        for row in rows:
+            if row["validity"] in ("stale", "superseded"):
+                continue
+            key = (row["capability_id"], row["version_id"])
+            group = groups.setdefault(key, {"invocations": {}, "sources": set()})
+            task_id = row["invocation_task_id"] or row["task_id"]
+            tasks = group["invocations"].setdefault(row["invocation_id"], set())
+            if task_id:
+                tasks.add(task_id)
+            group["sources"].add(row["source_type"])
+        for group in groups.values():
+            # Conflicting historical task annotations cannot split one invocation
+            # into multiple failures. Only an unambiguous task label joins calls.
+            group["episodes"] = {
+                ("task", next(iter(tasks))) if len(tasks) == 1 else ("invocation", invocation_id)
+                for invocation_id, tasks in group["invocations"].items()
             }
-            for row in self.store.db.execute(
-                "SELECT capability_id, version_id, COUNT(*) AS n "
-                "FROM evidence_events "
-                "WHERE event_type = ? AND outcome = 'failure' AND version_id IS NOT NULL "
-                "GROUP BY capability_id, version_id HAVING COUNT(*) >= ? "
-                "ORDER BY n DESC",
-                (EVENT_TASK_OUTCOME, failure_threshold),
-            ).fetchall()
+        repeated: list[dict[str, Any]] = [
+            {
+                "capability_id": key[0], "version_id": key[1],
+                "failures": len(group["episodes"]),
+                "source_types": sorted(group["sources"]),
+                "attribution": "unknown",
+                "suggested_category": "task_failure_unattributed",
+            }
+            for key, group in groups.items() if len(group["episodes"]) >= failure_threshold
         ]
+        repeated.sort(key=lambda item: (-item["failures"], item["capability_id"], item["version_id"]))
 
         suggestions: list[dict[str, Any]] = []
         if validity["unassessed"] > 0:
@@ -952,13 +1099,7 @@ class Evidence:
                 (version_id,),
             ).fetchone()["n"]
         )
-        outcomes = {outcome: 0 for outcome in OUTCOMES}
-        for row in self.store.db.execute(
-            "SELECT outcome, COUNT(*) AS n FROM evidence_events "
-            "WHERE event_type = ? AND version_id = ? GROUP BY outcome",
-            (EVENT_TASK_OUTCOME, version_id),
-        ).fetchall():
-            outcomes[row["outcome"]] = int(row["n"])
+        outcomes = self.outcome_counts(version_id)
 
         verifications = {outcome: 0 for outcome in VERIFICATION_OUTCOMES}
         for row in self.store.db.execute(

@@ -11,7 +11,7 @@ const STAGES = new Set(['observer_started', 'observer_stopped', 'tool_result', '
   'step_decision', 'step_failed', 'prompt_decision', 'turn_observation_ended', 'signal_detected',
   'opportunity_proposed', 'opportunity_prompted', 'prompt_unavailable', 'search_failed',
   'search_completed', 'search_result_unknown', 'save_failed', 'capability_saved',
-  'existing_version_returned', 'save_result_unknown', 'delivery_failed', 'guidance_delivered',
+  'existing_version_returned', 'reuse_observation_saved', 'save_result_unknown', 'delivery_failed', 'guidance_delivered',
   'delivery_result_unknown']);
 const REASONS = new Set(['limit_reached', 'identity_limit', 'plugin_unloaded', 'next_turn', 'agent_disposed',
   'no_agent', 'execution_cancelled', 'no_turn_state', 'turn_cancelled', 'token_not_symbol',

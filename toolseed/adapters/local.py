@@ -1,4 +1,4 @@
-"""Thin, host-agnostic adapter: exactly four registered tools (P0-SLIM §4).
+"""Thin, host-agnostic adapter for capability reuse and learning.
 
 The adapter declares honestly that it has no hooks, no task-end events and no
 reliable task outcome channel. Nothing here may be reported as task success.
@@ -11,6 +11,7 @@ from typing import Any
 
 from ..core.api import ToolSeed
 from ..core.errors import INTERNAL_ERROR, INVALID_ARGUMENT, error_response
+from ..core.learning import EXPERIENCE_SCHEMA
 
 PROTOCOL_VERSION = 1
 
@@ -55,6 +56,13 @@ TOOL_SPECS: tuple[dict[str, Any], ...] = (
         "description": "Read capability, search, delivery and evidence statistics.",
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "toolbox_learn",
+        "description": "Keep worthwhile methods, failure lessons or tool recipes. After reuse, bind observations to toolbox_run invocation/version/hash and optionally propose an additive amendment to the original capability. Agent claims are not independent verification; revisions need promotion.",
+        "input_schema": {"type": "object", "required": ["experience"], "properties": {
+            "experience": EXPERIENCE_SCHEMA, "context": {"type": "object"},
+        }},
+    },
 )
 
 
@@ -88,6 +96,8 @@ class LocalAdapter:
             )
         if name == "toolbox_stats":
             return self.core.toolbox_stats()
+        if name == "toolbox_learn":
+            return self.core.toolbox_learn(args.get("experience"), args.get("context"))
         return error_response(INVALID_ARGUMENT, "unknown tool name")
 
     def get_context(self) -> dict[str, Any]:

@@ -1,5 +1,23 @@
 # ToolSeed Alpha 状态说明
 
+> 2026-10-27 两轮真实模型修复任务已跑通：A 自主提炼方法，B 新会话主动召回、读取并采用，再向原能力追加观察。
+> 外部检查共 20 个案例通过，库中保持 1 个能力、1 个版本。范围是隔离的真实 DSH headless，见[实测记录](../benchmarks/results/dsh-experience-2026-10-27/REPORT.md)。
+
+> 2026-10-27 本地 DSH 部署已完成：新版插件、Skill 及实际 MCP 工具注册已核对；
+> 部署范围与真实模型行为的验证边界见 [DSH-DEPLOYMENT.md](DSH-DEPLOYMENT.md)。
+
+> 2026-10-26 修订生效增量（未发布）：DSH 原生验证工具通过宿主执行新场景与回归检查，
+> 全部通过才切换当前版本；失败保留旧版及检查事实。见 [REVISION-ACTIVATION.md](REVISION-ACTIVATION.md)。
+
+> 2026-10-25 复用更新增量（未发布）：`toolbox_learn` 支持绑定交付记录向原能力追加观察或提出
+> 增量修订；后续检索和交付可见近期使用观察。见 [REUSE-UPDATES.md](REUSE-UPDATES.md)。
+
+> 2026-10-25 主动召回增量（未发布）：DSH 在任务开始、工具错误和工具线索变化时通过宿主
+> 工具运行时自动检索，并向正常推理步骤注入少量候选。见 [PROACTIVE-RECALL.md](PROACTIVE-RECALL.md)。
+
+> 2026-10-25 学习入口增量（未发布）：新增第五个公共工具 `toolbox_learn`，支持方法、失败教训和
+> 工具用法入库；DSH 新增任务活动到提炼提示的接入。范围与使用见 [EXPERIENCE-LEARNING.md](EXPERIENCE-LEARNING.md)。
+
 > P1-A 本地开发增量（2026-10-22，未发布）：已加入 DSH 0.2.1-rc.2 的重复结构化失败信号与
 > 单次 L1 机会提示。隔离的真实宿主运行时、MCP 和脚本驱动验证了信号、提示提交、检索及保存失败恢复；
 > 真实模型的主动发现、实际采用、已验证方法沉淀和净收益仍未验收。详见 [P1-A.md](P1-A.md)。
@@ -9,12 +27,12 @@
 
 本文件只说明**当前处于什么状态**，不新增契约、不放宽既有约束。实现与验收范围仍以
 [P0-SLIM.md](P0-SLIM.md) 为准，长期设计见 [DESIGN.md](DESIGN.md)；两者范围不一致时以
-P0-SLIM 为准。使用方法见 [README 的 Alpha 快速上手](../README.md#alpha-快速上手)，
+P0-SLIM 为准；第五个学习工具及宿主触发增量以 [经验学习](EXPERIENCE-LEARNING.md) 补充。使用方法见 [README 的 Alpha 快速上手](../README.md#alpha-快速上手)，
 Agent 行为规约见随包分发的 [Skill](../toolseed/skill/SKILL.md)。
 
 ## 1. 一句话状态
 
-ToolSeed 已是可供真实 Agent 工作使用的 **Alpha**：四个公共工具、Procedure 的保存/检索/交付、
+ToolSeed 已是可供真实 Agent 工作使用的 **Alpha**：五个公共工具、经验提炼入口与 Procedure 的保存/检索/交付、
 不可变版本与内容哈希、证据分离与 `unknown` 纪律、本地 SQLite 持久化与官方 MCP stdio 服务
 都已实现并被验证；真实 Agent 工作中已观察到跨任务 Procedure 复用；但**净收益尚未被证明**，
 当前只能声明"机制可运行且复用可发生"。
@@ -23,7 +41,7 @@ ToolSeed 已是可供真实 Agent 工作使用的 **Alpha**：四个公共工具
 
 | 机制 | 验证方式 |
 |---|---|
-| 固定四个公共工具（`toolbox_search`/`toolbox_save`/`toolbox_run`/`toolbox_stats`） | 契约测试固定工具名；官方 MCP SDK 2.3.0 客户端枚举结果恰好四个 |
+| 五个公共工具（`toolbox_search`/`toolbox_save`/`toolbox_run`/`toolbox_stats`/`toolbox_learn`） | 契约测试固定工具名；官方 MCP 客户端枚举与学习 schema/调用测试 |
 | 单 candidate 传输格式与 Manifest 契约（含字段长度上限、未知字段拒绝、唯一 `kind=procedure`） | 契约测试与 Core 内唯一权威校验模块 |
 | 稳定身份、不可变版本、确定性 `content_hash`、精确重复不新建版本 | 版本与持久化测试 |
 | 先硬筛选后关键词排序的检索，允许空结果，默认 3 条 / 上限 5 条 | 检索测试 |
@@ -31,13 +49,13 @@ ToolSeed 已是可供真实 Agent 工作使用的 **Alpha**：四个公共工具
 | Invocation 与追加式 Evidence；无外部信号时保持 `unknown` | 证据测试；`toolbox_stats` 区分 `signals`/`measured` |
 | 能力/版本级隔离、退役、候选提升与回滚、失败诊断与修复候选、维护决策与观察 | P1 相关测试组 |
 | 本地 SQLite 持久化、共享数据目录、namespace 隔离、schema 迁移与并发唯一性 | 迁移/并发/持久化测试 |
-| `toolseed-mcp` stdio 服务 | 官方 SDK 客户端验证四工具与结构化 stats；stdio 子进程用例由 CI 工作流在三个平台执行（本轮无 CI 运行记录，该用例在本机因沙箱禁止子进程管道而跳过） |
+| `toolseed-mcp` stdio 服务 | 官方 SDK 客户端验证五个工具；本轮本地 stdio 子进程覆盖保存、学习、检索、交付与适用条件门禁；无本轮 CI 运行记录 |
 | 发布包形态（wheel 内含 Skill、entry point、非 editable 安装） | `scripts/package_smoke.py`、`scripts/verify_release.py`；CI `package` job 执行同一套检查（工作流配置，本轮无 CI 运行记录） |
 | 只读管理 CLI：status / capabilities list、show / activity / evidence / ui | 真实临时库、目录隔离、环境变量优先级、生命周期门禁、无写入、错误与帮助测试 |
 | DSH Desktop 0.2.1-rc.2 原生 ToolSeed 插件设置页 | 官方 settings.section、宿主 IPC 查询；同文档原生控件与主题令牌；“已入库能力”/“活动”两页，详情含验证、历史及高级信息；隔离同版 DSH 验证外观同步 |
 | 可选独立 Web GUI | 复用两页及详情展示、固定 loopback、HTTP 安全测试；沿用 [GUI.md](GUI.md) 的证据边界 |
 
-本地回归：290 项测试（Python 当前套件收录数，非本轮全量执行结果）。此前基线的 252 项测试已通过
+本地回归：379 项测试（Python 当前套件收录数，含宿主打包完整性回归；本轮见 [修订生效](REVISION-ACTIVATION.md)，此前增量见 [复用后更新](REUSE-UPDATES.md)、[主动召回](PROACTIVE-RECALL.md)、[经验学习](EXPERIENCE-LEARNING.md) 与 [PHASE-ONE.md](PHASE-ONE.md)）。此前基线的 252 项测试已通过
 （2 项按条件跳过）；GUI 开发仅执行相关定向测试，见 [GUI 验证说明](GUI.md)。
 具体范围见 [README 测试章节](../README.md#测试)。
 DSH 插件现有 11 项 Node 定向测试。本轮 UI 简化运行 26 项 GUI/管理 Python 测试及 4 项文档契约测试。
@@ -79,7 +97,7 @@ Core 一律保持 `unknown`。
   `kind` 不是 `procedure` 时返回 `UNSUPPORTED_CAPABILITY_KIND`，不静默降级。
 - 不支持多文件或 ZIP 能力包、`workflow`、异步保存队列、多用户 RBAC、检索缓存、
   向量检索或 LLM 重排、自动反思/自动修复。
-- 不提供第五个 Agent 公共工具：管理操作（隔离、解除、提升、归档、诊断、维护）只在本地
+- 不提供额外的 Agent 管理工具：管理操作（隔离、解除、提升、归档、诊断、维护）只在本地
   管理 CLI/Adapter 侧可用。
 - 不提供跨主机的统一可移植性保证：同一能力库可被多个宿主共享，但每次执行仍要检查
   运行时、权限、依赖、工作区与宿主能力兼容性。

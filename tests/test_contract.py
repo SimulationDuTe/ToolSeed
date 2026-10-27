@@ -8,11 +8,11 @@ from toolseed.adapters import LocalAdapter
 class ToolSurfaceTest(CoreTest):
     case = "surface"
 
-    def test_exactly_four_tools(self) -> None:
+    def test_exactly_five_tools(self) -> None:
         adapter = LocalAdapter(self.core)
         names = [spec["name"] for spec in adapter.register_tools()]
         self.assertEqual(
-            names, ["toolbox_search", "toolbox_save", "toolbox_run", "toolbox_stats"]
+            names, ["toolbox_search", "toolbox_save", "toolbox_run", "toolbox_stats", "toolbox_learn"]
         )
 
     def test_adding_capabilities_does_not_change_tool_list(self) -> None:

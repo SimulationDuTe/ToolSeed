@@ -25,6 +25,28 @@ def flat(text: str) -> str:
 
 
 class SkillContractTest(unittest.TestCase):
+    def test_save_confirmation_matches_the_actual_success_envelope(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        from tests.helpers import candidate
+        from toolseed import ToolSeed
+
+        # Unique fixture, never an existing library or another test's directory.
+        fixture_base = (REPO / "tests" / ".data").resolve()
+        fixture_base.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(prefix="p1a-skill-", dir=fixture_base) as root:
+            self.assertTrue(Path(root).resolve().is_relative_to(fixture_base))
+            core = ToolSeed(root)
+            try:
+                saved = core.toolbox_save(candidate(), "contract fixture")
+                self.assertEqual(saved["status"], "accepted")
+                self.assertNotIn("ok", saved)
+                self.assertIn("Confirm `status: accepted`, returned IDs and `version_status`", SKILL)
+                self.assertIn("do not include an `ok` field", SKILL_FLAT)
+                self.assertNotIn("Confirm `ok: true`", SKILL)
+            finally:
+                core.close()
+
     def test_skill_states_every_enforced_field_limit(self) -> None:
         expected = [
             f"| `name` | ≤ {manifest_module.NAME_MAX} characters |",

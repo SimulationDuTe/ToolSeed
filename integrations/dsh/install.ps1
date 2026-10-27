@@ -6,6 +6,8 @@ param(
     # Optional pre-fetched adapter tree. Defaults to this script's directory so the
     # existing checkout workflow keeps working unchanged.
     [string]$PluginDir = $PSScriptRoot,
+    # Packed local package avoids pnpm directory links losing host peer resolution.
+    [string]$PackageFile = '',
     # Plan only: report what would change without installing or editing config.
     [switch]$DryRun,
     # Only for an isolated, non-default DSH home during testing. The live
@@ -20,6 +22,10 @@ $ErrorActionPreference = 'Stop'
 $pythonPath = (Resolve-Path -LiteralPath $Python).Path
 $dataPath = [IO.Path]::GetFullPath($DataDir)
 $pluginPath = (Resolve-Path -LiteralPath $PluginDir).Path
+$pluginSpec = 'file:' + $pluginPath.Replace('\', '/')
+if ($PackageFile) {
+    $pluginSpec = 'file:' + (Resolve-Path -LiteralPath $PackageFile).Path.Replace('\', '/')
+}
 if (-not (Test-Path -LiteralPath (Join-Path $pluginPath 'package.json'))) {
     throw "Plugin directory has no package.json: $pluginPath"
 }
@@ -52,7 +58,7 @@ $newPatch = [regex]::Replace($previous, $pattern, '').TrimEnd() + "`n" + $block 
 $patchChanged = $newPatch -ne $previous
 if ($DryRun) {
     $result = [ordered]@{
-        ok = $true; dry_run = $true; plugin_dir = $pluginPath; python = $pythonPath
+        ok = $true; dry_run = $true; plugin_dir = $pluginPath; plugin_spec = $pluginSpec; python = $pythonPath
         data_dir = $dataPath; profile = $profilePath; patch = $patchPath
         patch_changed = $patchChanged; installed = $false
     }
@@ -61,6 +67,11 @@ if ($DryRun) {
         Write-Output "Profile: $profilePath (patch changed: $patchChanged)"
     }
     exit 0
+}
+if (-not $PackageFile) {
+    $packed = & $pythonPath -X utf8 -c 'import sys; from pathlib import Path; from toolseed.hosts import package_dsh_plugin; print(package_dsh_plugin(Path(sys.argv[1])))' $pluginPath
+    if ($LASTEXITCODE -ne 0) { throw 'Could not build the local ToolSeed plugin package.' }
+    $pluginSpec = 'file:' + (Resolve-Path -LiteralPath $packed).Path.Replace('\', '/')
 }
 $previousPlugin = $null
 $packagePath = Join-Path $profilePath 'package.json'
@@ -72,7 +83,7 @@ try {
 $envPrevious = $env:DSH_HOME
 try {
     $env:DSH_HOME = [IO.Path]::GetFullPath($DshHome)
-    & $DshCommand plugin --profile desktop add $pluginPath
+    & $DshCommand plugin --profile desktop add $pluginSpec
     if ($LASTEXITCODE -ne 0) {
         # Restore a previous registration if this was an upgrade attempt.
         if ($previousPlugin) {
