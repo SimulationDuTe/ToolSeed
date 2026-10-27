@@ -207,8 +207,8 @@ class PromotionContractTest(CoreTest):
         ).fetchone()["n"]
         self.assertEqual(stored, 0)
 
-    def test_verification_cannot_be_recorded_for_a_non_candidate_version(self) -> None:
-        """A version must exist as a candidate before evidence can bind to it."""
+    def test_ready_version_accepts_bound_evidence_without_changing_state(self) -> None:
+        """Post-delivery evidence is independent of the promotion lifecycle."""
         first = self.save()
         self.assertEqual(first["version_status"], "ready")
         result = self.core.record_version_verification(
@@ -224,8 +224,10 @@ class PromotionContractTest(CoreTest):
                 "case_ids": ["case"],
             },
         )
-        self.assertEqual(result["error"]["code"], "INVALID_ARGUMENT")
-        self.assertEqual(result["error"]["reason_code"], "VERSION_NOT_CANDIDATE")
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self.core.registry.get_version(first["version_id"])["status"], "ready")
+        current = self.core.registry.get_capability(first["capability_id"])
+        self.assertEqual(current["current_version_id"], first["version_id"])
 
     def test_verification_of_an_earlier_version_does_not_carry_over(self) -> None:
         """Evidence stays bound to its own version and never satisfies a later one."""

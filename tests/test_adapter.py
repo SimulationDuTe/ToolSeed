@@ -13,11 +13,11 @@ class AdapterTest(CoreTest):
         super().setUp()
         self.adapter = LocalAdapter(self.core, {"harness": "test"})
 
-    def test_four_tools_are_registered(self) -> None:
+    def test_five_tools_are_registered(self) -> None:
         names = [spec["name"] for spec in self.adapter.register_tools()]
         self.assertEqual(
             names,
-            ["toolbox_search", "toolbox_save", "toolbox_run", "toolbox_stats"],
+            ["toolbox_search", "toolbox_save", "toolbox_run", "toolbox_stats", "toolbox_learn"],
         )
 
     def test_invoke_save_then_search_and_run(self) -> None:

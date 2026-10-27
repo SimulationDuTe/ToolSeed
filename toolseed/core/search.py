@@ -9,7 +9,11 @@ import json
 import re
 from typing import Any
 
+from .applicability import assess_applicability
 from .errors import INVALID_ARGUMENT, error_response
+from .evidence import Evidence
+from .manifest import CandidateError
+from .recall import match_recall, normalize_recall
 from .registry import STATUS_READY, Registry
 from .storage import Store
 
@@ -18,7 +22,6 @@ _CJK_RUN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+")
 DEFAULT_RESULTS = 3
 MAX_RESULTS = 5
 EXCERPT_CHARS = 160
-APPLICABILITY_FIELDS = ("harnesses", "operating_systems", "required_tools")
 
 
 def tokens(text: str) -> set[str]:
@@ -53,6 +56,7 @@ class Search:
             raise ValueError(f"max_results must be an integer from 1 to {MAX_RESULTS}")
         self.store = store
         self.registry = registry
+        self.evidence = Evidence(store)
         self.max_results = max_results
 
     def search(self, query: Any, context: Any = None) -> dict[str, Any]:
@@ -61,28 +65,37 @@ class Search:
         if context is not None and not isinstance(context, dict):
             return error_response(INVALID_ARGUMENT, "context must be an object")
         context = context or {}
+        try:
+            recall = normalize_recall(context.get("recall"), query)
+        except CandidateError as exc:
+            return error_response(exc.code, exc.message)
         namespaces = self._namespaces(context)
 
-        direct = self._direct_lookup(query.strip())
+        direct = self._direct_lookup(query.strip()) if recall is None else None
         if direct is not None:
-            return {"results": [self._card(*direct)]}
+            return {"results": [self._card(*direct, context=context)]}
 
-        wanted = tokens(query)
-        scored: list[tuple[float, Any, Any]] = []
+        wanted = tokens(query) if recall is None else set()
+        scored: list[tuple[float, Any, Any, Any]] = []
         for capability, version in self.registry.deliverable_capabilities(namespaces):
             manifest = json.loads(version["manifest_json"])
             if not self._applicability_compatible(manifest, context):
                 continue
-            score = self._score(wanted, manifest, version["content"])
+            reason = None
+            if recall is not None:
+                score, reason = match_recall(query, recall, manifest, version["content"])
+            else:
+                score = self._score(wanted, manifest, version["content"])
             if score <= 0:
                 continue
-            scored.append((score, capability, version))
+            scored.append((score, capability, version, reason))
 
         scored.sort(key=lambda item: (-item[0], item[1]["name"]))
         return {
             "results": [
-                self._card(capability, version)
-                for _, capability, version in scored[: self.max_results]
+                {**self._card(capability, version, context=context),
+                 **({"recall_match": reason} if reason is not None else {})}
+                for _, capability, version, reason in scored[: min(self.max_results, 2) if recall else self.max_results]
             ]
         }
 
@@ -107,17 +120,7 @@ class Search:
         return capability, version
 
     def _applicability_compatible(self, manifest: dict[str, Any], context: dict[str, Any]) -> bool:
-        declared_map = manifest.get("applicability") or {}
-        for field in APPLICABILITY_FIELDS:
-            declared = declared_map.get(field) or []
-            current = context.get(field)
-            if not declared or not isinstance(current, list) or not current:
-                continue
-            declared_set = {str(item).lower() for item in declared}
-            current_set = {str(item).lower() for item in current}
-            if not declared_set & current_set:
-                return False
-        return True
+        return assess_applicability(manifest, context)["status"] != "incompatible"
 
     def _score(self, wanted: set[str], manifest: dict[str, Any], content: str) -> float:
         if not wanted:
@@ -132,19 +135,25 @@ class Search:
         score += 0.5 * len(wanted & tokens(content))
         return score
 
-    def _card(self, capability: Any, version: Any) -> dict[str, Any]:
+    def _card(self, capability: Any, version: Any, *, context: dict[str, Any]) -> dict[str, Any]:
         manifest = json.loads(version["manifest_json"])
         excerpt = " ".join(version["content"].split())[:EXCERPT_CHARS]
         return {
             "capability_id": capability["capability_id"],
             "version_id": version["version_id"],
             "version": version["version_number"],
+            "content_hash": version["content_hash"],
             "namespace": capability["namespace"],
             "name": manifest["name"],
             "kind": manifest["kind"],
             "description": manifest["description"],
             "when_to_use": manifest["when_to_use"],
             "not_for": manifest["not_for"],
+            "applicability": manifest["applicability"],
+            "applicability_check": assess_applicability(manifest, context),
+            "verification_summary": self.evidence.verification_summary(version["version_id"]),
+            "learning_summary": self.evidence.learning_summary(version["version_id"]),
+            "reuse_summary": self.evidence.reuse_summary(version["version_id"]),
             "tags": manifest["tags"],
             "content_excerpt": excerpt,
         }

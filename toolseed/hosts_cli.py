@@ -5,7 +5,7 @@ tree, then invokes the adapter installers that already ship in this repository
 (``integrations/codex/src/install.mjs`` and ``integrations/dsh/install.ps1``)
 and records what was deployed in a manifest next to the installed tree.
 
-Core, the schema and the four public MCP tools are untouched: hosts are
+Core, the schema and the public MCP tools are untouched: hosts are
 configured around the existing ``toolseed-mcp`` entry point.
 """
 from __future__ import annotations

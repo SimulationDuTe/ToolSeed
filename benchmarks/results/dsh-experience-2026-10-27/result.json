@@ -1,0 +1,183 @@
+{
+  "date": "2026-10-27",
+  "result": "cross_task_learning_and_reuse_observed",
+  "scope": "real installed DSH 0.2.1-rc.2 headless, installed ToolSeed adapter functions, isolated workspaces and library",
+  "desktop_ui_behavior_tested": false,
+  "provider": "openai-codex",
+  "model_requested": "gpt-6.1-sol",
+  "model_tasks": 2,
+  "capabilities_preseeded": 0,
+  "capabilities_manually_saved": 0,
+  "business_prompts_requested_memory_use": false,
+  "private_session_homes": true,
+  "credential_values_copied": false,
+  "production_model_settings_edited": false,
+  "tasks": {
+    "A": {
+      "session": "independent new DSH Agent",
+      "model": "gpt-6.1-sol",
+      "business_prompt_sha256": "4ad1b719020950f5217e06f650b53dc8300c49a124386ac9c21e6e2fb9c84d29",
+      "toolseed_named_in_business_prompt": false,
+      "scripted_model": false,
+      "exit_code": 0,
+      "duration_seconds": 413.937,
+      "independent_verification": {
+        "passed": true,
+        "case_count": 10,
+        "failures": [],
+        "protected_inputs_unchanged": true,
+        "supplied_suite_exit_code": 0,
+        "repair_note_exists": true
+      },
+      "model_tool_calls": [
+        "todo_write",
+        "glob",
+        "read",
+        "read",
+        "read",
+        "read",
+        "read",
+        "skill",
+        "mcp__toolseed__toolbox_search",
+        "pwsh",
+        "todo_write",
+        "edit",
+        "read",
+        "edit",
+        "edit",
+        "write",
+        "todo_write",
+        "pwsh",
+        "write",
+        "mcp__toolseed__toolbox_learn",
+        "todo_write"
+      ],
+      "model_step_usage_records": 18,
+      "reasoning_not_retained": true,
+      "raw_events": ".test-data\\dsh-experience-20261027-01\\results\\A3\\events.jsonl"
+    },
+    "B": {
+      "session": "independent new DSH Agent",
+      "model": "gpt-6.1-sol",
+      "business_prompt_sha256": "6e26b66567c40f2679219ef27d7375b01cb5a9104bd54585bcbf740b74732636",
+      "toolseed_named_in_business_prompt": false,
+      "scripted_model": false,
+      "exit_code": 0,
+      "duration_seconds": 161.203,
+      "independent_verification": {
+        "passed": true,
+        "case_count": 10,
+        "failures": [],
+        "protected_inputs_unchanged": true,
+        "supplied_suite_exit_code": 0,
+        "repair_note_exists": true
+      },
+      "model_tool_calls": [
+        "skill",
+        "mcp__toolseed__toolbox_run",
+        "todo_write",
+        "glob",
+        "read",
+        "read",
+        "read",
+        "read",
+        "read",
+        "pwsh",
+        "todo_write",
+        "write",
+        "edit",
+        "read",
+        "edit",
+        "pwsh",
+        "todo_write",
+        "write",
+        "mcp__toolseed__toolbox_learn",
+        "todo_write"
+      ],
+      "model_step_usage_records": 17,
+      "reasoning_not_retained": true,
+      "raw_events": ".test-data\\dsh-experience-20261027-01\\results\\B\\events.jsonl"
+    }
+  },
+  "automatic_recall_b": {
+    "matched_candidates": 1,
+    "context_committed": true
+  },
+  "capability": {
+    "id": "cap_8c7420327d89",
+    "version_id": "ver_1880c29d70df",
+    "content_hash": "sha256:89817f9186b4f4e844462359ebbf891f22f1c348e13af182273c4a723e1c0c05",
+    "name": "Repair ordered configuration merges with explicit-value semantics",
+    "kind": "procedure",
+    "when_to_use": "Independent services with a lowest-to-highest layer contract, explicit falsy values, whole-list replacement, and detached JSON-like results.",
+    "not_for": [
+      "Contracts requiring list concatenation, deletion markers or highest-to-lowest input ordering.",
+      "Claiming support for cyclic data or custom object copy semantics without extra tests."
+    ],
+    "actual_method_content": "## Method / 方法\nRead the local contract and implementation and run the existing tests before editing. Distinguish absent keys from explicit falsy values: iterate every patch item without a truthiness filter. Process layers in declared lowest-to-highest order. Recurse only when both existing and incoming values are dictionaries; otherwise assign a deep copy of the incoming value, including lists, null, false, zero, and empty strings. Preserve the public signature. Add targeted tests for root/nested falsy overrides and newly introduced falsy keys, dictionary empty-patch versus cross-type empty-dictionary replacement, type changes in both directions, and dictionary-to-scalar-to-dictionary sequences that must not resurrect discarded keys. Test nested result mutation isolation for retained and replaced values, including dictionaries inside lists, and independent resolutions. Run the full local test suite and report observed coverage and unsupported input categories.\n\n## Reuse checks / 复用验证\n- A later false, zero, empty string, null or empty list wins at root and nested keys.\n- An empty dictionary preserves existing dictionary keys but replaces an earlier non-dictionary.\n- A dictionary replaced by a scalar must not reappear when a later dictionary arrives.\n- Mutating nested dictionaries inside result lists must not change any input layer.",
+    "original_learning_event": "ev_d7298e69b935"
+  },
+  "reuse": {
+    "invocation_id": "inv_b39033bcfea7",
+    "feedback_event": "ev_194d04f7be9e",
+    "application_claim": "applied",
+    "actions_claim": "Read the local contract and implementation and ran baseline tests. Applied explicit-value handling, recursive dictionary-only merging, and deep-copy replacement. Added regression tests for falsy/new keys, empty dictionaries, type transitions, list replacement, recursive retention, and nested isolation.",
+    "claim_source": "agent",
+    "observation_only": true,
+    "new_version_created": false,
+    "observable_support": "guidance delivered before repair; repaired code and added tests implement its checks; independent task checks passed"
+  },
+  "library": {
+    "counts": {
+      "capabilities": 1,
+      "capability_versions": 1,
+      "invocations": 1,
+      "evidence_events": 13
+    },
+    "event_types": {
+      "experience_learned": 1,
+      "procedure_delivered": 1,
+      "procedure_saved": 1,
+      "reuse_learned": 1,
+      "search_performed": 9
+    },
+    "task_outcome_signals": 0
+  },
+  "startup_failures_retained": [
+    {
+      "attempt": "A",
+      "code": "UNKNOWN_MODEL",
+      "before_generation": true
+    },
+    {
+      "attempt": "A2",
+      "code": "AUTH",
+      "http_status": 401,
+      "provider": "deepseek-official",
+      "task_tools_executed": 0
+    }
+  ],
+  "test_runner_fixes": [
+    "wait for asynchronous subscription model catalog before the first request",
+    "supply ordinary domain task text as the business prompt",
+    "read the DSH JSON tool field when projecting tool calls",
+    "normalize Windows path separators for protected-input hashing"
+  ],
+  "validator_selfcheck": {
+    "passed": true,
+    "checks": [
+      "A:original_bugs_rejected",
+      "A:reference_passed",
+      "A:validator_input_tamper_rejected",
+      "B:original_bugs_rejected",
+      "B:reference_passed",
+      "B:validator_input_tamper_rejected"
+    ]
+  },
+  "limitations": [
+    "two constructed repair tasks, not a general autonomous-learning success rate",
+    "no matched baseline for token/time savings or net benefit",
+    "reuse feedback is agent-declared; task grading is external and not forged into Core outcomes"
+  ],
+  "artifact_root": ".test-data\\dsh-experience-20261027-01"
+}

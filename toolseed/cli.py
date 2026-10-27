@@ -46,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=[
             "search",
             "save",
+            "learn",
             "run",
             "stats",
             "quarantine",
@@ -67,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
             "archive",
             "record-outcome",
             "record-verification",
+            "prepare-revision-validation",
+            "complete-revision-validation",
             "migrate-check",
             "migrate-repair",
             "migrate-flatten",
@@ -147,6 +150,12 @@ def main(argv: list[str] | None = None) -> int:
             result = app.toolbox_search(payload.get("query", ""), context)
         elif namespace.operation == "save":
             result = app.toolbox_save(candidate, intent, context)
+        elif namespace.operation == "learn":
+            result = app.toolbox_learn(payload.get("experience"), context)
+        elif namespace.operation == "prepare-revision-validation":
+            result = app.prepare_revision_validation(payload.get("binding"), payload.get("environment"))
+        elif namespace.operation == "complete-revision-validation":
+            result = app.complete_revision_validation(payload.get("receipt"))
         elif namespace.operation == "run":
             result = app.toolbox_run(
                 payload.get("capability"), payload.get("args"), payload.get("options")

@@ -1,11 +1,35 @@
-# ToolSeed Evidence & Promotion Contract v0.1.1
+# ToolSeed Evidence & Promotion Contract v0.1.2
 
-> 状态：v0.4.0 候选实现，验证与晋升主链路已落地；任务信号幂等与完整回归执行器仍未实现  
+> 当前增量（2026-10-26）见[修订生效](REVISION-ACTIVATION.md)：DSH 已有受限的宿主工具断言执行器，
+> 通过后在同一事务记录验证并调用既有晋升门禁；失败保留当前版本。本文下方的未实现与工具数量说明为历史阶段范围。
+> 模型选择检查范围，执行器观察真实输出；本地管理调用仍可信，来源标签不提供身份认证。
+
+> 状态：本地第一阶段修订（2026-10-25）；验证与晋升主链路、任务信号幂等已落地；完整回归执行器仍未实现
 > 适用：ToolSeed v0.3.0 基线，v0.4.0 实现
 > 范围：结果信号、验证证据、候选版本、`promote_version`、版本生命周期  
 > 非目标：身份认证体系、自动反思、自动晋升、Workflow、第五个 MCP 工具、数据库选型
 
 ---
+
+## 第一阶段增量约定（优先于下文历史设计中的未实现说明）
+
+- `record_version_verification` 接受存在的 `candidate` 或 `ready` 版本；隔离/归档仍拒绝。
+  写入与有效性声明在同一事务完成，不修改内容、状态或 current 指针。晋升仍只针对候选，
+  仍要求对应哈希、独立来源声明、有效的通过结果及修订回归案例。
+- `record_task_outcome` 以 capability/version/hash/invocation/source/outcome 为幂等身份；
+  task 标签与摘要是注释。并发重试只写一次，返回 `event_id` 与 `duplicate`；已有 invocation
+  的 task_id 不允许改名。历史无 signal_key 的重复记录仍识别，不改写原始事件。
+- stats 与版本报告对历史同 invocation/source/outcome 信号去重；不同来源或不同结果保持分开。
+  这些是信号数，不是独立任务数或已验证成功数。
+- 维护统计按不同 task_id（缺失时 invocation_id）计数，排除失效/被替代、关联错误或哈希冲突
+  的失败信号；来源声明保留，归因为 unknown。仅建议 `task_failure_unattributed`，执行诊断决策
+  时再次检查当前证据，避免旧的重复反馈或已失效证据产生诊断。
+- 搜索与交付返回最新验证的有界摘要，按事件写入顺序选择，不用墙钟倒退掩盖新的失败。
+  无记录为 `unverified`，有记录为 `recorded`，损坏记录为 `invalid`。案例最多显示 5 个、
+  每个 120 字符，验证引用最多 240 字符；发生截断时 `details_truncated: true`，完整记录留在证据入口。
+  来源声明与有效性记录都不证明产物确已执行，也不证明当前任务适用或跨任务泛化。
+
+四个公共 MCP 工具、candidate 传输协议和 SQLite schema v6 保持兼容；本阶段不新增 Agent 反馈工具。
 
 ## 0. 核心原则
 

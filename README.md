@@ -1,8 +1,8 @@
 # ToolSeed
 
-P1-A 本地增量：DSH 0.2.1-rc.2 可根据重复的结构化工具失败，在正常 Agent 步骤中给出一次
-L1 能力机会提示。已有 MCP、只读面板和 CLI 路径保留；不自动执行、保存或增加模型调用。
-触发条件、启用配置、实际验证和行为验收边界见 [P1-A 交付记录](docs/P1-A.md)。
+让宿主模型把值得复用的任务方法、错误教训和工具用法沉淀为能力，在合适时机召回、应用并更新。
+当前本地增量已接通经验学习、主动召回、复用反馈与修订验证；两轮真实模型任务观察到完整闭环。
+实现范围及限制见 [Alpha 状态](docs/ALPHA-STATUS.md)，实际过程见[实测记录](benchmarks/results/dsh-experience-2026-10-27/REPORT.md)。
 
 面向 Agent 的本地**程序性能力库**（P0-Slim）。核心对象是 **Capability**：一个可复用、可检索、
 可版本化的 `procedure`。P0 只保存和交付程序性指引，**不执行代码**。
@@ -11,7 +11,7 @@ L1 能力机会提示。已有 MCP、只读面板和 CLI 路径保留；不自�
 - 长期设计：[docs/DESIGN.md](docs/DESIGN.md)
 - 两者范围不一致时，以 P0-SLIM 为准。
 
-这是一个本地单用户能力库，已包含 P0 闭环与部分 P1：四个固定公共 API、不可变版本、内容哈希、
+这是一个本地单用户能力库，已包含 P0 闭环与部分 P1：五个公共 API、不可变版本、内容哈希、
 关键词检索、Procedure 交付、证据分离、证据有效性、失败诊断与修复候选。它不是安全沙箱，
 也不是完整 MVP。
 
@@ -92,7 +92,7 @@ args = ["--data-dir", "/abs/path/to/.toolseed"]
 `--data-dir` 与 `TOOLSEED_DATA_DIR` 都能指定持久化目录；两者同时给出时以命令行参数为准。
 路径请写绝对路径——数据目录漂移会让能力库"看起来丢了"。
 
-### 3. 确认四个公共工具可用
+### 3. 确认五个公共工具可用
 
 用官方 MCP 客户端连一次自己的服务（`mcp` 是本包的依赖，已随包安装）：
 
@@ -116,7 +116,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-期望工具名恰好是 `toolbox_search`、`toolbox_save`、`toolbox_run`、`toolbox_stats`，
+期望工具名恰好是 `toolbox_search`、`toolbox_save`、`toolbox_run`、`toolbox_stats`、`toolbox_learn`，
 且 stats 中含 `capabilities` 与 `versions`。仓库内的等价检查是
 `python scripts/package_smoke.py`；若本机沙箱禁止创建子进程管道，可设
 `TOOLSEED_SKIP_STDIO_TEST=1` 跳过该用例。
@@ -132,7 +132,7 @@ asyncio.run(main())
 
 ### 5. 搜索、保存、交付
 
-四个工具的完整语义见[下文四个公共 API](#四个公共-api)与[Candidate 格式](#candidate-格式)。
+五个工具的完整语义见[公共 API](#五个公共-api)、[Candidate 格式](#candidate-格式)及[经验学习](docs/EXPERIENCE-LEARNING.md)。
 最短路径：
 
 ```jsonc
@@ -247,7 +247,7 @@ python -m toolseed.ui --data-dir /absolute/path/to/.toolseed
 未知结果和成本保持未知。完整启动、数据来源及验证说明见 [docs/GUI.md](docs/GUI.md)，
 本轮 UI 修改与实际截图见 [面板简化交付记录](docs/PANEL-SIMPLIFICATION.md)。
 
-## 四个公共 API
+## 五个公共 API
 
 | API | 说明 |
 |---|---|
@@ -255,6 +255,16 @@ python -m toolseed.ui --data-dir /absolute/path/to/.toolseed
 | `toolbox_save(candidate, intent, context?)` | 接收唯一一种 JSON `candidate`；规范化、校验、哈希、查重后持久化，返回 `accepted` 与 `version_status` |
 | `toolbox_run(capability, args?, options?)` | 解析稳定 `capability_id` 或无歧义名称，交付当前 `ready` 版本的 Procedure 正文，并记录 Invocation |
 | `toolbox_stats()` | 只读统计：能力/版本状态、搜索、交付、重复命中、证据事件与任务结果信号（`signals`/`measured` 区分“没有信号”和“零结果”） |
+| `toolbox_learn(experience, context?)` | 保存模型提炼的方法、失败教训、工具用法；复用后可绑定交付记录向原能力追加观察或提出增量修订，避免重复建能力；修订保持候选门禁 |
+
+DSH 新增经验提炼提示，帮助模型在操作后判断值得留下什么；无需先生成脚本。
+接口示例、触发时机与部署要求见[从任务经验到可复用能力](docs/EXPERIENCE-LEARNING.md)。
+DSH 还会在任务开始、工具错误和工具线索变化时[主动召回](docs/PROACTIVE-RECALL.md)少量相关能力，
+供宿主模型判断是否读取并采用。复用现有 `toolbox_search`，不增加公共工具或额外模型调用。
+实际采用后的观察和改进可通过[复用后更新](docs/REUSE-UPDATES.md)回流原能力，并在后续检索与交付时呈现。
+DSH 还可通过[宿主执行修订验证](docs/REVISION-ACTIVATION.md)，在实际检查通过后启用新版；失败保留旧版和检查事实。
+新版已完成一次[本地 DSH 部署](docs/DSH-DEPLOYMENT.md)，同步 Skill 并验证了安装入口与实际 MCP 工具注册。
+随后两轮[真实模型任务](benchmarks/results/dsh-experience-2026-10-27/REPORT.md)观察到自主提炼、跨会话主动召回、实际采用和使用反馈回流；测试库保持 1 个能力、1 个版本。
 
 所有 API 返回结构化结果。失败返回与 DESIGN §9 稳定语义一致的核心错误码（P0 实现 11 个），
 例如 `INVALID_ARGUMENT`、`CAPABILITY_NOT_FOUND`、`CAPABILITY_NOT_READY`、
@@ -309,6 +319,12 @@ P0 只有一种候选传输格式：一个 JSON 对象，包含对象形式的 `
 `applicability` 的空数组表示**未声明限制**，不代表已验证兼容。只有当前上下文和能力声明都明确时，
 才会因冲突做硬过滤。
 
+`harnesses` / `operating_systems` 是可选项，`required_tools` 必须全部满足。查询 context 与交付
+options 的非空工具清单默认完整；部分清单传 `required_tools_complete: false`，缺项保持未知。
+空清单默认未知，配合 `required_tools_complete: true` 才表示确认没有工具。搜索卡片与交付结果
+返回 `applicability`、`applicability_check` 和有界的 `verification_summary`。
+ID 直查允许查看条件冲突，但交付会拒绝已知冲突。详细语义见 [P0 契约](docs/P0-SLIM.md#41-toolbox_searchquery-context)。
+
 ## 保存语义
 
 - 只有内容与版本记录都持久化成功后才返回 `status: "accepted"`；持久化失败返回
@@ -327,6 +343,8 @@ P0 只有一种候选传输格式：一个 JSON 对象，包含对象形式的 `
   - 破坏性或高风险操作（如 `rm -rf`、`drop table`）→ 允许保存，但版本保持 `candidate`，
     响应里附 `notes`；
   - 未命中且是新建 Capability → 版本进入 `ready`；修订版本仍为 `candidate`。
+- 完整、无条件的禁止语句（如“不要绕过权限。”）可以保存；含条件例外或引用反例的歧义语句
+  保持待审候选，不自动晋升。全文的其他行动指令和真实凭据仍按原规则检查。
 - 保存的 Procedure 是**不可信数据**。交付时只作为能力材料，不得覆盖系统/开发者策略，
   也不得凭内容自我授权。
 - 保存时的 `intent` 与已知来源字段（`source`、`task_id`、`session_id`、`harness`、
@@ -340,7 +358,10 @@ P0 只有一种候选传输格式：一个 JSON 对象，包含对象形式的 `
 
 - 只交付能力未退役/整体隔离时，该能力的当前 `ready` 版本；直接 ID 也不能绕过状态检查。
 - 返回 `mode: "agent_guided"`、`execution_status: "guidance_delivered"`、
-  `task_outcome: "unknown"`，以及 `result.content`、`when_to_use`、`not_for`。
+  `task_outcome: "unknown"`、`content_hash`，以及 `result.content`、`when_to_use`、`not_for`、
+  `applicability`、`applicability_check`、`verification_summary`。
+- `options` 可提供环境字段，已知冲突返回 `CONTRACT_VIOLATION` / `APPLICABILITY_MISMATCH`，
+  不创建交付记录。未知字段不变成已兼容，Agent 仍须检查权限与具体任务前提。
 - 同时记录一次 Invocation 和 `procedure_delivered` 事件；**交付本身不是任务成功证据**。
 - `args` 目前只做对象类型校验，不参与 procedure 交付；`options` 中只有
   `task_id`、`session_id`、`harness`、`workspace` 会进入 Invocation 上下文。
@@ -525,18 +546,21 @@ python -m toolseed migrate-flatten --data-dir .toolseed \
 
 ## 管理操作与 CLI
 
-以下方法面向本地管理/Adapter，**不会注册成第五个 Agent 工具**：
+以下方法面向本地管理/Adapter，**不会注册成额外的 Agent 工具**：
 
 - `quarantine(capability_id, reason)`：整体隔离一个能力；
 - `release_capability(capability_id, reason, evidence_ref?)`：审核后解除能力级隔离，写入审计事件；
 - `quarantine_version(version_id, reason)`：隔离单个版本；
 - `release_version(version_id, reason, evidence_ref?)`：解除版本隔离，回到 `candidate`；
 - `promote_version(version_id, reason, evidence_ref?)`：仅在候选版本绑定有效独立验证证据、内容哈希匹配、验证晚于候选创建且满足回归要求时，把候选提升为 `ready` 并更新 current；
-- `record_version_verification(version_id, content_hash, outcome, source_type, verification_ref, verification)`：记录绑定候选版本和内容哈希的 `version_verification` 证据；相同内容重复提交按 `signal_key` 幂等；
+- `record_version_verification(version_id, content_hash, outcome, source_type, verification_ref, verification)`：记录绑定 candidate 或 ready 版本和内容哈希的 `version_verification` 证据；相同内容重复提交按 `signal_key` 幂等；记录验证不改变生命周期状态；
 - `rollback_version(capability_id, version_id, reason, evidence_ref?)`：回滚到更旧的 `ready` 版本并记录事件；
 - `version_report(version_id)`：按版本汇总交付、任务结果、验证结果、诊断、观察、证据有效性与回滚；
 - `archive(capability_id, reason)`：退役一个能力；
-- `record_task_outcome(...)`：显式记录带来源的任务结果信号；
+- `record_task_outcome(...)`：显式记录带来源的任务结果信号；同一 invocation/source/outcome
+  重试返回原 `event_id` 和 `duplicate: true`，摘要与任务标签不形成新证据。历史重复项在统计时
+  去重，原始记录不改写。维护按不同 task（缺失时 invocation）计数，排除 stale/superseded，
+  重复失败仅建议 `task_failure_unattributed`，不自动归因；
 - `assess_evidence(...)` / `evidence_validity(...)`：追加证据有效性评估并读取当前投影；
   其中 `assessments` 历史列表按记录顺序（最旧在前）返回，末项即当前投影，`assessed_at` 仅供审计；
 - `expire_version_evidence(...)`：策略/环境变化时显式让某版本证据失效；
@@ -580,7 +604,7 @@ python -m toolseed migrate-check --data-dir .toolseed
 
 ## Adapter
 
-`LocalAdapter` 注册固定的四个工具，并如实报告宿主能力缺口：没有 hooks、任务结束事件、
+`LocalAdapter` 注册五个工具，并如实报告宿主能力缺口：没有 hooks、任务结束事件、
 工作区事件、权限确认、取消或可靠任务结果通道。不支持的能力返回 `False`，不模拟。
 它另外提供 `health_check()` 与 `translate_error()`，不改变 Core 的错误语义。
 
@@ -601,7 +625,7 @@ toolseed-mcp
 python -m toolseed.mcp_server
 ```
 
-已用官方 SDK 2.3.0 验证：服务只暴露四个工具，`Client(server)` 能列出工具并取得结构化统计。
+已用官方 SDK 2.3.0 验证：服务暴露五个工具，`Client(server)` 能列出工具并取得结构化统计。
 stdio 子进程测试在 CI 中运行；本地 DSH 沙箱禁止创建子进程管道，可设
 `TOOLSEED_SKIP_STDIO_TEST=1` 跳过该用例。缺少 SDK 时会输出可操作错误并以非零状态退出，
 不抛裸 traceback。正式安装：
@@ -610,7 +634,7 @@ stdio 子进程测试在 CI 中运行；本地 DSH 沙箱禁止创建子进程�
 pip install -e .
 ```
 
-- 只暴露 `toolbox_search`、`toolbox_save`、`toolbox_run`、`toolbox_stats`；
+- 只暴露 `toolbox_search`、`toolbox_save`、`toolbox_run`、`toolbox_stats`、`toolbox_learn`；
 - 默认 stdio，不监听端口；
 - 默认使用用户级共享目录；可用 `TOOLSEED_DATA_DIR` 或 `--data-dir` 覆盖；
 - 同一进程内串行访问 SQLite，跨进程依赖 WAL/`busy_timeout`；
@@ -647,7 +671,7 @@ args = []
 
 - Claude/Cursor 风格的 `mcpServers` JSON 配置能真实启动 `toolseed-mcp` stdio 子进程；
 - Codex 风格的 `mcp_servers` TOML 配置同样能启动；
-- 两种配置都列出四个固定工具，并能调用 `toolbox_stats` 取得结构化结果。
+- 两种配置都列出五个公共工具，并能调用 `toolbox_stats` 取得结构化结果。
 
 实际 Claude Code / Cursor / Codex 客户端 UI 的接入尚未逐个人工验证；配置命令应使用绝对路径
 `toolseed-mcp`，或等价的 `python -m toolseed.mcp_server`。
@@ -668,7 +692,7 @@ python scripts/verify_release.py --dist dist
 - 包导入路径不在源码树内；
 - `toolseed-mcp` entry point 存在且 `--help` 可运行；
 - `toolseed/skill/SKILL.md` 已打进 wheel；
-- 通过安装后的 `toolseed-mcp` 启动 stdio，枚举四个工具并调用 `toolbox_stats`。
+- 通过安装后的 `toolseed-mcp` 启动 stdio，枚举五个工具并调用 `toolbox_stats`。
 
 CI 的 `package` job 在 Ubuntu / Windows / macOS 上执行同一套检查。
 
@@ -681,7 +705,7 @@ GitHub Release 由 `v*` tag 触发：构建 sdist/wheel，生成 `SHA256SUMS`，
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **290 项**测试（Python 套件收录数；本轮只运行定向测试，见 [P1-A 验证说明](docs/P1-A.md)、[管理入口验证](docs/AGENT-INTERFACES.md) 与 [GUI 验证说明](docs/GUI.md)）；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
+当前 **379 项**测试（Python 套件收录数；另含宿主打包完整性回归，各轮执行范围见 [修订生效](docs/REVISION-ACTIVATION.md)、[复用后更新](docs/REUSE-UPDATES.md)、[主动召回](docs/PROACTIVE-RECALL.md)、[经验学习](docs/EXPERIENCE-LEARNING.md)、[第一阶段记录](docs/PHASE-ONE.md)、[P1-A 验证说明](docs/P1-A.md)、[管理入口验证](docs/AGENT-INTERFACES.md) 与 [GUI 验证说明](docs/GUI.md)）；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 随包 Skill 与 Core 契约一致性（Skill 写明的字段上限必须等于 Core 权威常量）、保存被拒后的
@@ -761,7 +785,7 @@ python -m benchmarks.live_experiment --mode command \
 
 ## 当前范围与未实现项
 
-已实现（P0 + P1 第一块）：四个固定 API、Capability/Version/Invocation/Evidence 模型、不可变版本与
+已实现（P0 + P1 增量）：五个公共 API、宿主模型经验学习入口与 DSH 提炼提示、Capability/Version/Invocation/Evidence 模型、不可变版本与
 内容哈希、唯一 `procedure` 表示、Manifest 校验、关键词检索与硬筛选、Procedure 交付、
 本地 SQLite 持久化、用户级共享数据目录与 namespace、schema v3 迁移、并发保存唯一身份约束、能力/版本隔离与退役、
 能力级隔离解除、版本解除与候选提升、证据有效性评估、自动失效与维护报告、维护决策、能力观察与

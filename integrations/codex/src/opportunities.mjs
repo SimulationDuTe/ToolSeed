@@ -35,11 +35,11 @@ export function extractToolseedKind(toolName, mcpServer = 'toolseed') {
   if (typeof toolName !== 'string' || typeof mcpServer !== 'string') return undefined;
   const escaped = mcpServer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const patterns = [
-    new RegExp(`^mcp__${escaped}__toolbox_(search|save|run|stats)$`),
-    new RegExp(`^mcp__${escaped}\\.toolbox_(search|save|run|stats)$`),
-    new RegExp(`^${escaped}__toolbox_(search|save|run|stats)$`),
-    new RegExp(`^${escaped}[._]toolbox_(search|save|run|stats)$`),
-    /^toolseed__toolbox_(search|save|run|stats)$/,
+    new RegExp(`^mcp__${escaped}__toolbox_(search|save|run|stats|learn)$`),
+    new RegExp(`^mcp__${escaped}\\.toolbox_(search|save|run|stats|learn)$`),
+    new RegExp(`^${escaped}__toolbox_(search|save|run|stats|learn)$`),
+    new RegExp(`^${escaped}[._]toolbox_(search|save|run|stats|learn)$`),
+    /^toolseed__toolbox_(search|save|run|stats|learn)$/,
   ];
   for (const pattern of patterns) {
     const match = pattern.exec(toolName);
@@ -155,12 +155,13 @@ function toolseedObservation(kind, body, toolResponse) {
       ...links,
     };
   }
-  if (kind === 'save') {
+  if (kind === 'save' || kind === 'learn') {
     const stored = !failed && body?.status === 'accepted'
       && typeof body?.capability_id === 'string' && typeof body?.version_id === 'string';
     return {
       stage: failed ? 'save_failed' : stored
-        ? (body?.duplicate === true ? 'existing_version_returned' : 'capability_saved')
+        ? (body?.learning_action === 'observation_added' ? 'reuse_observation_saved'
+          : body?.duplicate === true ? 'existing_version_returned' : 'capability_saved')
         : 'save_result_unknown',
       ...links,
     };

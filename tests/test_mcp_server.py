@@ -8,7 +8,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from tests.helpers import CoreTest
+from tests.helpers import CoreTest, candidate
 
 HAS_MCP = importlib.util.find_spec("mcp") is not None
 
@@ -26,7 +26,7 @@ class MissingMCPSdkTest(unittest.TestCase):
 class MCPServerTest(CoreTest):
     case = "mcp"
 
-    def test_server_exposes_exactly_four_tools(self) -> None:
+    def test_server_exposes_exactly_five_tools(self) -> None:
         from mcp import Client
 
         from toolseed.mcp_server import create_server
@@ -41,7 +41,7 @@ class MCPServerTest(CoreTest):
         names = asyncio.run(inspect())
         self.assertEqual(
             names,
-            ["toolbox_search", "toolbox_save", "toolbox_run", "toolbox_stats"],
+            ["toolbox_search", "toolbox_save", "toolbox_run", "toolbox_stats", "toolbox_learn"],
         )
 
     def test_tool_call_returns_structured_stats(self) -> None:
@@ -81,7 +81,38 @@ class MCPServerTest(CoreTest):
         async def inspect() -> tuple[list[str], dict]:
             async with Client(params) as client:
                 tools = await client.list_tools()
+                saved_response = await client.call_tool("toolbox_save", {"candidate": candidate(
+                    manifest={"applicability": {"required_tools": ["python", "git"]}},
+                )})
+                saved = saved_response.structured_content or {}
+                self.assertEqual(saved["status"], "accepted")
+                searched = await client.call_tool("toolbox_search", {
+                    "query": saved["capability_id"], "context": {"required_tools": ["python"]},
+                })
+                card = (searched.structured_content or {})["results"][0]
+                self.assertEqual(card["applicability_check"]["status"], "incompatible")
+                self.assertEqual(card["verification_summary"], {"status": "unverified"})
+                rejected = await client.call_tool("toolbox_run", {
+                    "capability": saved["capability_id"],
+                    "options": {"required_tools": ["python"]},
+                })
+                self.assertEqual((rejected.structured_content or {})["error"]["reason_code"],
+                                 "APPLICABILITY_MISMATCH")
+                delivered = await client.call_tool("toolbox_run", {
+                    "capability": saved["capability_id"],
+                    "options": {"required_tools": ["python", "git"]},
+                })
+                delivery = delivered.structured_content or {}
+                self.assertEqual(delivery["result"]["applicability_check"]["status"], "compatible")
+                self.assertEqual(delivery["task_outcome"], "unknown")
+                from tests.test_learning import experience
+                learned_response = await client.call_tool("toolbox_learn", {"experience": experience()})
+                learned = learned_response.structured_content or {}
+                self.assertEqual(learned["learning_action"], "created")
+                found_response = await client.call_tool("toolbox_search", {"query": "checkerboard-baked-into-png"})
+                self.assertEqual((found_response.structured_content or {})["results"][0]["capability_id"], learned["capability_id"])
                 stats = await client.call_tool("toolbox_stats", {})
+                self.assertEqual((stats.structured_content or {})["delivery"]["count"], 1)
                 return (
                     [tool.name for tool in tools.tools],
                     stats.structured_content or {},
@@ -90,6 +121,6 @@ class MCPServerTest(CoreTest):
         names, payload = asyncio.run(inspect())
         self.assertEqual(
             names,
-            ["toolbox_search", "toolbox_save", "toolbox_run", "toolbox_stats"],
+            ["toolbox_search", "toolbox_save", "toolbox_run", "toolbox_stats", "toolbox_learn"],
         )
         self.assertIn("capabilities", payload)

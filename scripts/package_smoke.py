@@ -98,6 +98,7 @@ def main() -> int:
             "toolbox_save",
             "toolbox_run",
             "toolbox_stats",
+            "toolbox_learn",
         ]:
             raise AssertionError(f"unexpected MCP tools: {names}")
         if "capabilities" not in stats:

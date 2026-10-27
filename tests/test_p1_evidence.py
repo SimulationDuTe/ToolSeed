@@ -128,14 +128,15 @@ class EvidenceValidityTest(CoreTest):
 
     def test_maintenance_report_flags_repeated_failures(self) -> None:
         delivery = self._delivered()
-        for _ in range(2):
+        for index in range(2):
+            delivery = self.core.toolbox_run(delivery["capability_id"])
             self.core.record_task_outcome(
                 capability_id=delivery["capability_id"],
                 version_id=delivery["version_id"],
                 invocation_id=delivery["invocation_id"],
                 outcome="failure",
                 source_type="test_runner",
-                task_id="repeat",
+                task_id=f"repeat-{index}",
             )
 
         report = self.core.maintenance_report()["report"]
@@ -145,7 +146,7 @@ class EvidenceValidityTest(CoreTest):
             item for item in report["suggestions"] if item["action"] == "diagnose_failure"
         ]
         self.assertEqual(len(suggestions), 1)
-        self.assertEqual(suggestions[0]["suggested_category"], "task_failure_attributed")
+        self.assertEqual(suggestions[0]["suggested_category"], "task_failure_unattributed")
 
     def _delivered_event_id(self) -> str:
         return self.core.store.db.execute(
@@ -426,15 +427,15 @@ class EvolutionDecisionTest(CoreTest):
 
     def _seed_repeated_failure(self) -> tuple[dict, dict]:
         saved = self.save()
-        delivered = self.core.toolbox_run(saved["capability_id"])
-        for _ in range(2):
+        for index in range(2):
+            delivered = self.core.toolbox_run(saved["capability_id"])
             self.core.record_task_outcome(
                 capability_id=delivered["capability_id"],
                 version_id=delivered["version_id"],
                 invocation_id=delivered["invocation_id"],
                 outcome="failure",
                 source_type="test_runner",
-                task_id="repeat",
+                task_id=f"repeat-{index}",
             )
         return saved, delivered
 
@@ -834,7 +835,7 @@ class EvolutionDecisionTest(CoreTest):
         self.assertEqual(applied["decision"]["status"], "applied")
         self.assertEqual(applied["decision"]["resolution"], "confirmed by reviewer")
         self.assertEqual(
-            applied["diagnosis"]["category"], "task_failure_attributed"
+            applied["diagnosis"]["category"], "task_failure_unattributed"
         )
         self.assertIn("repeated failures: 2", applied["diagnosis"]["summary"])
 
