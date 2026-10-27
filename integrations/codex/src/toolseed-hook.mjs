@@ -2,6 +2,7 @@
 import {appendFileSync, readFileSync} from 'node:fs';
 import {parseArgs} from 'node:util';
 import {handlePostToolUse} from './opportunities.mjs';
+import {handleWorkflow, workflowCanceled} from './workflow.mjs';
 import {defaultLogDir, defaultStateDir, resolveCodexHome} from './paths.mjs';
 
 function trace(line) {
@@ -25,12 +26,22 @@ function parseOptions(argv) {
       'log-dir': {type: 'string'},
       'codex-home': {type: 'string'},
       'no-log': {type: 'boolean', default: false},
+      python: {type: 'string'},
+      'data-dir': {type: 'string'},
+      namespace: {type: 'string'},
+      'no-recall': {type: 'boolean', default: false},
+      'no-learning': {type: 'boolean', default: false},
     },
   });
   const threshold = Number(values.threshold);
   return {
     mcpServer: String(values['mcp-server'] || 'toolseed'),
     threshold: Number.isSafeInteger(threshold) && threshold >= 1 && threshold <= 20 ? threshold : 3,
+    python: values.python,
+    dataDir: values['data-dir'],
+    namespace: values.namespace,
+    recall: !values['no-recall'],
+    learning: !values['no-learning'],
     codexHome: resolveCodexHome(values['codex-home']),
     stateDir: values['state-dir'] ? String(values['state-dir']) : defaultStateDir(resolveCodexHome(values['codex-home'])),
     logDir: values['no-log'] ? undefined
@@ -69,8 +80,14 @@ async function main() {
     return;
   }
   try {
-    output = await handlePostToolUse(readInput(), options);
-    trace(`output=${JSON.stringify(output).slice(0, 240)}`);
+    const input = readInput();
+    const workflow = await handleWorkflow(input, options);
+    const opportunity = workflowCanceled(input, options) ? {} : await handlePostToolUse(input, options);
+    const parts = [workflow, opportunity].map(value => value.hookSpecificOutput?.additionalContext).filter(Boolean);
+    output = parts.length ? {hookSpecificOutput: {hookEventName: input.hook_event_name,
+      additionalContext: parts.join('\n\n')}} : {};
+    if (workflowCanceled(input, options)) output = {};
+    trace(`context_bytes=${Buffer.byteLength(output.hookSpecificOutput?.additionalContext ?? '')}`);
   } catch (error) {
     trace(`handler_error=${error?.name ?? 'Error'}`);
     output = {};

@@ -3,6 +3,7 @@
 让宿主模型把值得复用的任务方法、错误教训和工具用法沉淀为能力，在合适时机召回、应用并更新。
 当前本地增量已接通经验学习、主动召回、复用反馈与修订验证；两轮真实模型任务观察到完整闭环。
 实现范围及限制见 [Alpha 状态](docs/ALPHA-STATUS.md)，实际过程见[实测记录](benchmarks/results/dsh-experience-2026-10-27/REPORT.md)。
+Codex 接入任务召回、经验提炼与原能力反馈，宿主差异及验证范围见 [Codex 工作流](docs/CODEX-WORKFLOW.md)。
 
 面向 Agent 的本地**程序性能力库**（P0-Slim）。核心对象是 **Capability**：一个可复用、可检索、
 可版本化的 `procedure`。P0 只保存和交付程序性指引，**不执行代码**。
@@ -609,11 +610,11 @@ python -m toolseed migrate-check --data-dir .toolseed
 它另外提供 `health_check()` 与 `translate_error()`，不改变 Core 的错误语义。
 
 **Codex Agent Adapter**（本地未发布）位于 `integrations/codex`：在既有 MCP 之外，
-使用 Codex 的 `PostToolUse` hook 提供一次 L1 机会提示，安装 ToolSeed Skill 与
+使用任务提交、工具返回、中断与会话结束 Hook 接入召回、学习提示和复用反馈，安装 ToolSeed Skill 与
 `AGENTS.md` 片段，并提供基于 Codex app-server 的安装/自检。它不替代 MCP，不修改
-Core、Schema 或公共四工具协议。接入方式、DSH/Codex 能力对照、已验证范围与限制见
+Schema 或五个公共工具的协议。主动召回使用有界的本地只读 Core 查询；提炼与反馈由宿主模型通过 MCP 完成。接入方式、已验证范围与限制见
 [Codex Adapter 说明](integrations/codex/README.md)和
-[交付记录](docs/CODEX-ADAPTER.md)。
+[Codex 工作流](docs/CODEX-WORKFLOW.md)。历史交付记录见 [CODEX-ADAPTER.md](docs/CODEX-ADAPTER.md)。
 
 ## MCP Server
 
@@ -705,7 +706,7 @@ GitHub Release 由 `v*` tag 触发：构建 sdist/wheel，生成 `SHA256SUMS`，
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **379 项**测试（Python 套件收录数；另含宿主打包完整性回归，各轮执行范围见 [修订生效](docs/REVISION-ACTIVATION.md)、[复用后更新](docs/REUSE-UPDATES.md)、[主动召回](docs/PROACTIVE-RECALL.md)、[经验学习](docs/EXPERIENCE-LEARNING.md)、[第一阶段记录](docs/PHASE-ONE.md)、[P1-A 验证说明](docs/P1-A.md)、[管理入口验证](docs/AGENT-INTERFACES.md) 与 [GUI 验证说明](docs/GUI.md)）；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
+当前 **383 项**测试（Python 套件收录数；另含宿主打包完整性回归，各轮执行范围见 [修订生效](docs/REVISION-ACTIVATION.md)、[复用后更新](docs/REUSE-UPDATES.md)、[主动召回](docs/PROACTIVE-RECALL.md)、[经验学习](docs/EXPERIENCE-LEARNING.md)、[第一阶段记录](docs/PHASE-ONE.md)、[P1-A 验证说明](docs/P1-A.md)、[管理入口验证](docs/AGENT-INTERFACES.md) 与 [GUI 验证说明](docs/GUI.md)）；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 随包 Skill 与 Core 契约一致性（Skill 写明的字段上限必须等于 Core 权威常量）、保存被拒后的
