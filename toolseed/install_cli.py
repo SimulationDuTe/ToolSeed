@@ -7,6 +7,7 @@ from typing import Any
 
 from .hosts import HOSTS, HostInstallError, install_root
 from .hosts_cli import host_status, install_host, uninstall_host
+from .updater import update_host
 
 COMMANDS = {"install", "update", "uninstall", "host"}
 
@@ -54,6 +55,15 @@ def _render(payload: dict[str, Any]) -> str:
                 f"  目录: {payload.get('directory')}\n"
                 + (f"  上一版本: {payload['previous']}\n" if payload.get("previous") else "")
                 + "  重新运行 install 会更新到指定版本；update 用于显式升级。")
+    if action == "update":
+        if payload.get("plan"):
+            return (f"{host} 升级计划（未应用）\n  commit: {payload['source']['commit_sha']}\n"
+                    f"  能力库: {payload['data_dir']}\n  步骤: " + " → ".join(payload["steps"]))
+        return (f"{host} {'已是当前版本' if not payload.get('changed') else '完整升级完成'} "
+                f"v{version} ({str(commit)[:12]})\n"
+                f"  Core: {payload.get('install', {}).get('core', {}).get('python')}\n"
+                f"  能力库: {payload.get('install', {}).get('data_dir')}\n"
+                + ("  新建 Codex 聊天加载新版。" if host == "codex" else "  打开 DSH 加载新版。"))
     if action == "uninstall":
         removed = payload.get("removed", {})
         return (f"{host} 已卸载\n"
@@ -86,15 +96,19 @@ def _parser(prog: str) -> argparse.ArgumentParser:
     install.add_argument("--dsh-command", default="dsh")
     install.add_argument("--repair", action="store_true", help="相同源码和配置也重新应用，修复配置漂移")
 
-    update = sub.add_parser("update", help="升级到指定版本，失败时保留原安装")
+    update = sub.add_parser("update", help="完整升级 Core、Skill、MCP 和宿主适配器")
     update.add_argument("host", choices=list(HOSTS))
     update.add_argument("--ref", required=True, help="目标版本；必须显式指定，不会跟随分支漂移")
     update.add_argument("--repo", default=None)
     update.add_argument("--codex-home", default=None)
     update.add_argument("--dsh-home", default=None)
-    update.add_argument("--mcp-server", default="toolseed")
+    update.add_argument("--mcp-server", default=None, help="默认沿用已记录的 MCP 名称")
     update.add_argument("--python", default=None)
-    update.add_argument("--dsh-command", default="dsh")
+    update.add_argument("--dsh-command", default=None)
+    update.add_argument("--cwd", default=None, help="Codex 项目目录；默认沿用已记录目录")
+    update.add_argument("--offline", action="store_true", help="Core 依赖仅使用本地缓存；源码仍按 --ref 获取")
+    update.add_argument("--plan", action="store_true", help="获取并固定源码，只展示升级计划")
+    update.add_argument("--adapter-only", action="store_true", help="兼容旧用法：仅升级适配器，不升级 Core 或 MCP 配置")
     update.add_argument("--repair", action="store_true", help="相同源码和配置也重新应用，修复配置漂移")
 
     uninstall = sub.add_parser("uninstall", help="卸载适配层，保留能力库与用户配置")
@@ -155,12 +169,21 @@ def main(argv: list[str]) -> int:
                                      dsh_home=args.dsh_home)
             payload["action"] = "uninstall"
             code = 0
+        elif args.operation == "update" and not args.adapter_only:
+            from pathlib import Path
+
+            payload = update_host(args.host, ref=args.ref, root=root, repo=args.repo,
+                data_dir=args.data_dir, codex_home=args.codex_home, dsh_home=args.dsh_home,
+                mcp_server=args.mcp_server, python=args.python, dsh_command=args.dsh_command,
+                cwd=Path(args.cwd) if args.cwd else None, repair=args.repair,
+                offline=args.offline, plan=args.plan)
+            code = 0 if payload.get("ok") else 2
         else:
             payload = install_host(
                 args.host, ref=args.ref, root=root, data_dir=args.data_dir,
                 codex_home=args.codex_home, dsh_home=args.dsh_home,
-                mcp_server=args.mcp_server, python=args.python,
-                dsh_command=args.dsh_command, update=args.operation == "update", repair=args.repair,
+                mcp_server=args.mcp_server or "toolseed", python=args.python,
+                dsh_command=args.dsh_command or "dsh", update=args.operation == "update", repair=args.repair,
             )
             payload["action"] = "install"
             code = 0 if payload.get("ok") else 2
@@ -172,6 +195,10 @@ def main(argv: list[str]) -> int:
         payload = {"ok": False, "action": args.operation,
                    "error": {"code": "FILESYSTEM_ERROR", "message": "文件系统操作失败。",
                              "detail": str(exc)}}
+        code = 2
+    except (ValueError, KeyError, TypeError):
+        payload = {"ok": False, "action": args.operation, "error": {
+            "code": "HOST_CONFIGURATION_INVALID", "message": "宿主配置或安装记录格式无效，请检查后重试。"}}
         code = 2
     print(_render(payload) if wants_text else json.dumps(payload, ensure_ascii=False, indent=2))
     return code
