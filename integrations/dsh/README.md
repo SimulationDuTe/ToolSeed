@@ -1,6 +1,6 @@
 # ToolSeed native DSH panel
 
-Local, unpublished plugin for **DeepSeek Harness Desktop 0.2.1-rc.2**. Uses the
+Local, unpublished plugin for **DeepSeek Harness Desktop 0.2.1-rc.2 / rc.3**. Uses the
 official `settings.section` slot and `connection.fetch.register`
 owner-admitted transport (HTTP on Web, IPC on Desktop). No DSH source changes,
 browser launch, model calls, extra MCP tool or listening service. The recall
@@ -218,7 +218,10 @@ such as `dsh-codex-subscription` and `dsh-plugin-wallpaper-engine` use this same
 `settings.section` registration; their source was read only as an integration reference.
 Current documentation: [plugin creation](https://deepseek-harness.github.io/deepseek-harness/en/develop/basic/),
 [client modules](https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/client-modules).
-Only this installed version is claimed; later DSH versions require re-verification.
+The rc.3 installed AgentLoop, ToolRuntime and MCP have also passed the isolated
+learning, reuse feedback, revision activation and proactive recall probes with
+zero real model calls. The compatibility declaration names only these two
+verified prereleases; later DSH versions require re-verification.
 
 The simplified panel was tested in an isolated official DSH Web profile
 with the same 0.2.1-rc.2 client and components, not in the user's live Desktop session:

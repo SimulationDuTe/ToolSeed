@@ -203,13 +203,16 @@ toolseed install dsh   --ref <tag|sha|本地源码目录>
 toolseed status                 # 只读：能力库 + 宿主状态
 toolseed host --text            # 只读：宿主、版本、Skill、Hook、MCP
 toolseed update codex --ref <tag|sha>
+toolseed update dsh   --ref <tag|sha>
 toolseed uninstall codex
 ```
 
 安装器按**固定 commit SHA** 获取适配层源码并装到 `~/.toolseed/hosts/<host>/`，
 不依赖开发工作区；复用 `integrations/codex` 与 `integrations/dsh` 的现有安装器，
-不修改 Core、Schema 或四工具协议。当前没有任何 Release 包含 Codex Adapter，
-因此只能以**预发布 SHA** 安装；`update` 不会跟随分支漂移。
+`install` 保留原有的适配层安装行为；`update` 默认在独立 Python 环境中安装同一 commit 的
+Core，同步 MCP、Skill 与适配器，备份并试迁移已有能力库，原生自检通过后才记录激活。
+分支只在本次命令开始解析一次，不后台跟随；`--plan` 展示计划，`--adapter-only` 保留旧升级方式。
+新版本必须先发布到 GitHub，或使用 `--ref <本地源码目录>`。详见[完整升级](docs/FULL-UPDATE.md)。
 详见[统一安装说明](docs/UNIFIED-INSTALL.md)。
 
 DSH Desktop **0.2.1-rc.2** 的本地插件使用官方 `settings.section` 插槽；安装后从 **设置 → ToolSeed** 打开面板，
@@ -719,7 +722,7 @@ node --test integrations/codex/test/*.test.mjs integrations/dsh/test/*.test.mjs 
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **417 项**测试（Python 套件收录数；另含宿主打包完整性回归，各轮执行范围见 [修订生效](docs/REVISION-ACTIVATION.md)、[复用后更新](docs/REUSE-UPDATES.md)、[主动召回](docs/PROACTIVE-RECALL.md)、[经验学习](docs/EXPERIENCE-LEARNING.md)、[第一阶段记录](docs/PHASE-ONE.md)、[P1-A 验证说明](docs/P1-A.md)、[管理入口验证](docs/AGENT-INTERFACES.md) 与 [GUI 验证说明](docs/GUI.md)）；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
+当前 **442 项**测试（Python 套件收录数；另含宿主打包完整性回归，各轮执行范围见 [修订生效](docs/REVISION-ACTIVATION.md)、[复用后更新](docs/REUSE-UPDATES.md)、[主动召回](docs/PROACTIVE-RECALL.md)、[经验学习](docs/EXPERIENCE-LEARNING.md)、[第一阶段记录](docs/PHASE-ONE.md)、[P1-A 验证说明](docs/P1-A.md)、[管理入口验证](docs/AGENT-INTERFACES.md) 与 [GUI 验证说明](docs/GUI.md)）；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 随包 Skill 与 Core 契约一致性（Skill 写明的字段上限必须等于 Core 权威常量）、保存被拒后的

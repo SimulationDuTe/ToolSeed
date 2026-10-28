@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "ToolSeed capability management, reuse and experience learning for DeepSeek Harness",
   "type": "module",
-  "engines": {"dsh": "0.2.1-rc.2"},
+  "engines": {"dsh": "0.2.1-rc.2 || 0.2.1-rc.3"},
   "main": "index.js",
   "exports": {".": "./index.js", "./client": "./lib/client.js"},
   "scripts": {"build": "node build.mjs", "test": "node --test test/*.test.mjs"},

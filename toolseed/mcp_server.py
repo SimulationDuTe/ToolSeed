@@ -139,10 +139,11 @@ def main() -> None:
     if args.probe:
         import asyncio
         import json
+        from importlib.metadata import version
 
         from mcp import Client
 
-        from .core.storage import default_data_dir
+        from .core.storage import MIGRATIONS, default_data_dir
 
         async def probe() -> list[str]:
             async with Client(create_server()) as client:
@@ -151,6 +152,9 @@ def main() -> None:
         from pathlib import Path
 
         print(json.dumps({"ok": True, "tools": asyncio.run(probe()),
+                          "core_version": version("toolseed"),
+                          "schema_version": max(MIGRATIONS),
+                          "module_path": str(Path(__file__).resolve()),
                           "features": {"read_only_search": True, "revision_base_binding": True},
                           "data_dir": str(Path(args.data_dir or default_data_dir()).expanduser().resolve())}))
         return

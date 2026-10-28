@@ -34,7 +34,8 @@ TAG_RE = re.compile(r"^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$")
 # avoids writing repository metadata (for example `.github`), which restricted
 # host sandboxes may refuse, and keeps the installed tree minimal.
 TREE_PATHS = (
-    "toolseed/skill/SKILL.md",
+    "toolseed/",
+    "README.md",
     "pyproject.toml",
     "integrations/codex/src/",
     "integrations/shared/learning-state.mjs",
@@ -291,6 +292,8 @@ def fetch_local_tree(source: Path, destination: Path) -> Path:
             path for path in origin.rglob("*") if path.is_file()
         ]
         for path in targets:
+            if not _source_file(path):
+                continue
             rel = path.relative_to(source)
             target = destination / rel
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -315,12 +318,18 @@ def fingerprint_tree(source: Path) -> str:
             digest.update(origin.read_bytes())
         elif origin.is_dir():
             for path in sorted(origin.rglob("*")):
-                if not path.is_file():
+                if not path.is_file() or not _source_file(path):
                     continue
                 rel = path.relative_to(source).as_posix()
                 digest.update(rel.encode("utf-8"))
                 digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def _source_file(path: Path) -> bool:
+    """Runtime caches/build output are not part of an immutable source snapshot."""
+    return not (path.is_symlink() or "__pycache__" in path.parts or
+                path.suffix in {".pyc", ".pyo"} or path.name.endswith(".egg-info"))
 
 
 def local_resolution(source: Path, commit_sha: str | None = None) -> Resolution:

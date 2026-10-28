@@ -429,6 +429,10 @@ def uninstall_host(host: str, *, root: Path | None = None, purge: bool = False,
         raise HostInstallError("UNKNOWN_HOST", f"未知宿主：{host}")
     root = root or install_root()
     active = active_install(root, host)
+    if purge and any(read_manifest(path).get("full_update") for path in installed_versions(root, host)):
+        raise HostInstallError("CORE_RUNTIME_RETAINED",
+            "完整升级的 Core 位于安装树内。请使用不带 --purge 的 uninstall 保留 MCP 运行环境；"
+            "确认所有 MCP 引用已移除后再单独清理历史运行环境。")
     if host == "codex":
         tree = active.directory if active else None
         if tree is None:
@@ -629,14 +633,17 @@ def host_status(*, root: Path | None = None, data_dir: str | None = None,
             "prerelease": record.manifest.get("prerelease") if record else None,
             "directory": str(record.directory) if record else None,
             "recorded": bool(record and (record.directory / MANIFEST_NAME).is_file()),
+            "core": record.manifest.get("core") if record else None,
         }
+        # Each host keeps its own existing library unless a directory was explicit.
+        host_data = _data_dir(data_dir or (record.manifest.get("data_dir") if record else None))
         if host == "codex":
             entry.update(codex_status(tree=record.directory if record else None,
                                       codex_home=_codex_home(codex_home),
-                                      data_dir=data, mcp_server=mcp_server, deep=deep))
+                                      data_dir=host_data, mcp_server=mcp_server, deep=deep))
         else:
             entry.update(dsh_status(tree=record.directory if record else None,
-                                    dsh_home=_dsh_home(dsh_home), data_dir=data))
+                                    dsh_home=_dsh_home(dsh_home), data_dir=host_data))
         # "installed" means managed by this installer. An existing dev-checkout
         # deployment is real but unmanaged, and must not read as "not installed".
         entry["managed"] = bool(entry.get("recorded"))
