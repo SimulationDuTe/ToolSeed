@@ -86,7 +86,9 @@ class LearningTest(CoreTest):
 
     def test_revision_uses_existing_name_and_preserves_current(self):
         first = self.learn(name="transparent-export")
-        second = self.learn(target_capability_id=first["capability_id"], method="Check alpha and colour mode before export")
+        second = self.learn(target_capability_id=first["capability_id"],
+                            base_version_id=first["version_id"], base_content_hash=first["content_hash"],
+                            method="Check alpha and colour mode before export")
         self.assertEqual(second["capability_id"], first["capability_id"])
         self.assertEqual(second["version_status"], "candidate")
         self.assertEqual(second["learning_action"], "revision_proposed")
@@ -186,6 +188,7 @@ class LearningTest(CoreTest):
                 spec = next(tool for tool in specs.tools if tool.name == "toolbox_learn")
                 shapes = spec.input_schema["properties"]["experience"]["oneOf"]
                 self.assertIn("pitfalls", shapes[0]["properties"])
+                self.assertEqual(shapes[0]["properties"]["aliases"]["maxItems"], 12)
                 self.assertIn("reuse", shapes[1]["properties"])
                 result = await client.call_tool("toolbox_learn", {"experience": experience()})
                 self.assertEqual(result.structured_content["status"], "accepted")

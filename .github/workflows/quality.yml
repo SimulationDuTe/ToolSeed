@@ -9,6 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  host-contracts:
+    name: host contracts / ${{ matrix.os }} / node${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run portable host contract tests
+        run: node --test integrations/codex/test/*.test.mjs integrations/dsh/test/*.test.mjs integrations/shared/test/*.test.mjs
+
   test:
     name: ${{ matrix.os }} / py${{ matrix.python }}
     runs-on: ${{ matrix.os }}

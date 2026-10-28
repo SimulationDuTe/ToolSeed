@@ -172,6 +172,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_signal_key
   WHERE signal_key IS NOT NULL;
 """
 
+MIGRATION_7 = """
+ALTER TABLE capability_versions ADD COLUMN knowledge_json TEXT;
+"""
+
 MIGRATIONS: dict[int, str] = {
     1: SCHEMA,
     2: MIGRATION_2,
@@ -179,6 +183,7 @@ MIGRATIONS: dict[int, str] = {
     4: MIGRATION_4,
     5: MIGRATION_5,
     6: MIGRATION_6,
+    7: MIGRATION_7,
 }
 
 
@@ -319,6 +324,11 @@ class Store:
     @property
     def schema_version(self) -> int:
         return int(self.db.execute("PRAGMA user_version").fetchone()[0])
+
+    @property
+    def transaction_active(self) -> bool:
+        """A Store scope owns commit/rollback, including deferred-before-write scopes."""
+        return self._tx_depth > 0
 
     @contextlib.contextmanager
     def transaction(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:

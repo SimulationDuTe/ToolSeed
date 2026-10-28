@@ -27,7 +27,7 @@ class ManagementTest(CoreTest):
 
     def test_all_views_share_live_data_without_core_writes(self):
         saved = self.save()
-        revised = self.save(candidate(target_capability_id=saved["capability_id"], content="revision"))
+        revised = self.save(candidate(revision_of=saved, content="revision"))
         verified = verify_version(self.core, revised)
         self.core.toolbox_search("timeout")
         self.core.toolbox_run(saved["capability_id"])
@@ -103,7 +103,7 @@ class ManagementTest(CoreTest):
 
     def test_detail_obeys_lifecycle_gate_and_missing_id(self):
         saved = self.save()
-        self.save(candidate(target_capability_id=saved["capability_id"], content="candidate secret"))
+        self.save(candidate(revision_of=saved, content="candidate secret"))
         data = self.read("capabilities", "show", saved["capability_id"])
         self.assertIsNone(data["versions"][0]["content"])
         self.core.quarantine(saved["capability_id"])

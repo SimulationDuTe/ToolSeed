@@ -52,9 +52,9 @@ class Inspector:
             db.row_factory = sqlite3.Row
             db.execute("PRAGMA query_only = ON")
             db.execute("BEGIN")
-            if db.execute("PRAGMA user_version").fetchone()[0] != 6:
+            if db.execute("PRAGMA user_version").fetchone()[0] not in (6, 7):
                 raise InspectionError(
-                    "SCHEMA_UNSUPPORTED", "此面板支持 Schema v6。请通过对应版本的 Core 管理迁移；GUI 不迁移。"
+                    "SCHEMA_UNSUPPORTED", "此面板支持 Schema v6/v7。请通过对应版本的 Core 管理迁移；GUI 不迁移。"
                 )
             yield db
         except (sqlite3.Error, OSError) as exc:
@@ -120,6 +120,7 @@ class Inspector:
     @staticmethod
     def _capability(row: sqlite3.Row) -> dict[str, Any]:
         item = dict(row)
+        item.pop("knowledge_json", None)
         manifest = object_json(item.pop("manifest_json", None))
         item.update({
             "kind": manifest.get("kind"), "description": manifest.get("description"),

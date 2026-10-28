@@ -18,7 +18,8 @@ PROTOCOL_VERSION = 1
 KIND_PROCEDURE = "procedure"
 SUPPORTED_KINDS = frozenset({KIND_PROCEDURE})
 
-CANDIDATE_FIELDS = frozenset({"protocol_version", "manifest", "content", "target_capability_id"})
+CANDIDATE_FIELDS = frozenset({"protocol_version", "manifest", "content", "target_capability_id",
+                              "base_version_id", "base_content_hash"})
 MANIFEST_FIELDS = frozenset(
     {"name", "kind", "description", "when_to_use", "not_for", "tags", "applicability"}
 )
@@ -192,6 +193,16 @@ def normalize_candidate(raw: Any) -> dict[str, Any]:
                 INVALID_ARGUMENT, "target_capability_id must be a non-empty string"
             )
         candidate["target_capability_id"] = target.strip()
+
+    for field, limit in (("base_version_id", 160), ("base_content_hash", 80)):
+        if field in raw:
+            if target is None:
+                raise CandidateError(CONTRACT_VIOLATION, f"{field} requires target_capability_id")
+            candidate[field] = _require_text(raw[field], field, limit)
+    if "base_content_hash" in candidate and not re.fullmatch(
+        r"sha256:[a-f0-9]{64}", candidate["base_content_hash"]
+    ):
+        raise CandidateError(CONTRACT_VIOLATION, "base_content_hash must be a SHA-256 content hash")
 
     if len(canonical(candidate).encode("utf-8")) > CANDIDATE_MAX_BYTES:
         raise CandidateError(CONTRACT_VIOLATION, f"candidate exceeds {CANDIDATE_MAX_BYTES} bytes")

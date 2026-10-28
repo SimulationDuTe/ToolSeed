@@ -126,6 +126,7 @@ class Registry:
         *,
         status: str,
         origin: str,
+        knowledge: dict[str, Any] | None = None,
     ) -> sqlite3.Row:
         version_id = new_id("ver")
         number = self.next_version_number(capability_id)
@@ -135,8 +136,8 @@ class Registry:
         with self.store.transaction() as db:
             db.execute(
                 "INSERT INTO capability_versions (version_id, capability_id, version_number, "
-                "namespace, name, manifest_json, content, content_hash, status, origin, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "namespace, name, manifest_json, content, content_hash, status, origin, created_at, knowledge_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     version_id,
                     capability_id,
@@ -149,6 +150,7 @@ class Registry:
                     status,
                     origin,
                     now(),
+                    json.dumps(knowledge, ensure_ascii=False, sort_keys=True) if knowledge is not None else None,
                 ),
             )
             if status == STATUS_READY:
@@ -168,6 +170,7 @@ class Registry:
         status: str,
         origin: str,
         namespace: str = "global",
+        knowledge: dict[str, Any] | None = None,
     ) -> tuple[sqlite3.Row, sqlite3.Row]:
         """Create a capability and its first version in one transaction."""
         capability_id = new_id("cap")
@@ -181,8 +184,8 @@ class Registry:
             )
             db.execute(
                 "INSERT INTO capability_versions (version_id, capability_id, version_number, "
-                "namespace, name, manifest_json, content, content_hash, status, origin, created_at) "
-                "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "namespace, name, manifest_json, content, content_hash, status, origin, created_at, knowledge_json) "
+                "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     version_id,
                     capability_id,
@@ -194,6 +197,7 @@ class Registry:
                     status,
                     origin,
                     stamp,
+                    json.dumps(knowledge, ensure_ascii=False, sort_keys=True) if knowledge is not None else None,
                 ),
             )
             if status == STATUS_READY:
@@ -353,10 +357,12 @@ class Registry:
     def deliverable_capabilities(
         self,
         namespaces: tuple[str, ...] | None = None,
-    ) -> list[tuple[sqlite3.Row, sqlite3.Row]]:
+    ) -> list[tuple[dict[str, Any], sqlite3.Row]]:
         """Capabilities whose current version is ready and which are not retired/isolated."""
         query = (
-            "SELECT c.capability_id AS c_id, v.version_id AS v_id "
+            "SELECT c.capability_id AS c_id, c.name AS c_name, c.namespace AS c_namespace, "
+            "c.created_at AS c_created_at, c.current_version_id AS c_current_version_id, "
+            "c.archived_at AS c_archived_at, c.quarantined_at AS c_quarantined_at, v.* "
             "FROM capabilities c JOIN capability_versions v ON v.version_id = c.current_version_id "
             "WHERE c.archived_at IS NULL AND c.quarantined_at IS NULL AND v.status = 'ready'"
         )
@@ -366,10 +372,6 @@ class Registry:
             query += f" AND c.namespace IN ({placeholders})"
             params.extend(namespaces)
         rows = self.store.db.execute(query, params).fetchall()
-        result = []
-        for row in rows:
-            capability = self.get_capability(row["c_id"])
-            version = self.get_version(row["v_id"])
-            if capability is not None and version is not None:
-                result.append((capability, version))
-        return result
+        return [({"capability_id": row["c_id"], **{key: row["c_" + key] for key in
+                 ("name", "namespace", "created_at", "current_version_id", "archived_at", "quarantined_at")}}, row)
+                for row in rows]

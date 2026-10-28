@@ -14,14 +14,24 @@ Core 不另调模型，也不要求先产生脚本。模型负责判断哪些事
 `toolbox_learn(experience, context?)` 接受一个经验对象：
 
 - 必填：`problem`、`when_to_use`、`method`、`reuse_reason`、`validation`。
-- 可选：`triggers`（可识别的问题线索）、`pitfalls`（尝试/观察/教训）、
+- 可选：`triggers`（可识别的问题线索）、`aliases`（至多 12 个概念别名或中英文等价表述，每项至多 160 字符）、`pitfalls`（尝试/观察/教训）、
   `tool_recipes`（用途/工具线索/用法/检查）、`checks`（下次复用的验证办法）。
 - 可选：`name`、`not_for`、`tags`、`applicability`、`source_refs`、`target_capability_id`。
+- 完整修订已有能力时，还必须提交实际读取的 `base_version_id` 与 `base_content_hash`。
+  基线变化须重新读取并合并；缺少基线的旧版修订调用会被拒绝。2026-10-28 的加固范围见
+  [前四项修复](FIRST-FOUR-FIXES.md)。增量 reuse 反馈继续沿用原交付绑定，无需添加这两个字段。
 
 方法、错误边界与工具用法整理为现有 `procedure`，全部参与内容检索。来源和这次验证观察作为
 绑定版本哈希的 `experience_learned` 事件追加，同一方法换任务复用不会仅因来源改变而复制一份。
 重复提交同一观察返回同一学习事件。搜索卡片和交付结果中的 `learning_summary` 给出最近的
 模型观察，明确标注 `source_type=agent`，不会替代独立验证或写成任务成功。
+
+2026-10-28 后续增量将新学习的结构保留在版本 `knowledge_json` 中，交付时提供
+`result.experience`；只接受与正文精确对应的结构。推荐方法、观察、应对、工具用法、别名和检查继续审查。
+仅在结构化 `pitfalls.attempt` 中出现的高影响操作可作为明确标注、引用的反例保留，
+先进入候选态，再经过既有独立验证与提升门禁；正文随意写“反例”不获得豁免。
+旧版本内容和状态不回写，不从旧正文猜测结构；需要改善旧错误材料时读取原版本并提交完整定向修订。
+Schema v7 迁移、审查状态与召回边界详见 [后三项修复](LAST-THREE-FIXES.md)。
 
 ```json
 {

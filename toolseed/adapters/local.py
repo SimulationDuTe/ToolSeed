@@ -27,7 +27,7 @@ TOOL_SPECS: tuple[dict[str, Any], ...] = (
     },
     {
         "name": "toolbox_save",
-        "description": "Submit one normalized procedure candidate for persistence.",
+        "description": "Submit one normalized procedure candidate. Full targeted revisions require base_version_id and base_content_hash from the method read; reconcile against the current method on a base conflict.",
         "input_schema": {
             "type": "object",
             "properties": {

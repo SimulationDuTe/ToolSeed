@@ -30,6 +30,15 @@ class HostSnapshotTest(unittest.TestCase):
                 for relative in package["files"]:
                     self.assertEqual(archive.extractfile("package/" + relative).read(), (plugin / relative).read_bytes())
             initial = fingerprint_tree(snapshot)
+            shared = snapshot / "integrations" / "shared" / "learning-state.mjs"
+            self.assertEqual(shared.read_bytes(), (plugin / "lib" / "learning-state.mjs").read_bytes())
+            shared_content = shared.read_bytes()
+            shared.write_bytes(shared_content + b"\n// shared upgrade fixture\n")
+            self.assertNotEqual(initial, fingerprint_tree(snapshot))
+            package_dsh_plugin(plugin)
+            self.assertEqual(shared.read_bytes(), (plugin / "lib" / "learning-state.mjs").read_bytes())
+            shared.write_bytes(shared_content)
+            package_dsh_plugin(plugin)
             for name in ("learning.js", "recall.js", "revisions.js"):
                 path = plugin / name
                 content = path.read_bytes()

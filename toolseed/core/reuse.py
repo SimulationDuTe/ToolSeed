@@ -103,4 +103,5 @@ def amended_candidate(base: Any, capability_id: str, amendment: dict[str, Any]) 
         sections.append("## Additional reuse checks / 补充验证\n" + "\n".join("- " + check for check in amendment["checks"]))
     content = base["content"] + ("\n\n" + "\n\n".join(sections) if sections else "")
     return normalize_candidate({"protocol_version": 1, "target_capability_id": capability_id,
+                                "base_version_id": base["version_id"], "base_content_hash": base["content_hash"],
                                 "manifest": manifest, "content": content})

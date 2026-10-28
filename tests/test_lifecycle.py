@@ -14,7 +14,7 @@ class VersionRollbackTest(CoreTest):
         second = self.core.toolbox_save(
             candidate(
                 content=CONTENT + "\n4. 新版本。",
-                target_capability_id=first["capability_id"],
+                revision_of=first,
             ),
             "version two",
         )
@@ -97,7 +97,7 @@ class LifecycleTest(CoreTest):
     def test_new_candidate_does_not_replace_a_ready_version(self) -> None:
         first = self.save()
         updated = self.core.toolbox_save(
-            candidate(content=REVIEW_CONTENT, target_capability_id=first["capability_id"]),
+            candidate(content=REVIEW_CONTENT, revision_of=first),
             "new version awaiting review",
         )
         self.assertEqual(updated["version"], 2)
@@ -113,7 +113,7 @@ class LifecycleTest(CoreTest):
         updated = self.core.toolbox_save(
             candidate(
                 content=CONTENT + "\n4. 新增一步。",
-                target_capability_id=first["capability_id"],
+                revision_of=first,
             ),
             "improved version",
         )
@@ -143,7 +143,7 @@ class LifecycleTest(CoreTest):
         second = self.core.toolbox_save(
             candidate(
                 content=CONTENT + "\n4. 新版本。",
-                target_capability_id=first["capability_id"],
+                revision_of=first,
             ),
             "version two",
         )
@@ -265,7 +265,7 @@ class LifecycleTest(CoreTest):
         second = self.core.toolbox_save(
             candidate(
                 content=CONTENT + "\n4. 新版本。",
-                target_capability_id=first["capability_id"],
+                revision_of=first,
             ),
             "version two",
         )
@@ -326,7 +326,7 @@ class LifecycleTest(CoreTest):
         result = self.core.toolbox_save(
             candidate(
                 content=CONTENT + "\n4. 新内容。",
-                target_capability_id=saved["capability_id"],
+                revision_of=saved,
             ),
             "should fail",
         )

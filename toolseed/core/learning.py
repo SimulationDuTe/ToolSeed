@@ -5,6 +5,7 @@ import hashlib
 from typing import Any
 
 from .errors import CONTRACT_VIOLATION, INVALID_ARGUMENT, POLICY_BLOCKED
+from .knowledge import render_structure
 from .manifest import (
     CandidateError,
     _require_text,
@@ -19,10 +20,10 @@ from .reuse import REUSE_SCHEMA
 TEXT_FIELDS = {
     "problem": 280, "when_to_use": 500, "method": 12000,
     "reuse_reason": 500, "validation": 2000, "name": 80,
-    "target_capability_id": 160,
+    "target_capability_id": 160, "base_version_id": 160, "base_content_hash": 80,
 }
 REQUIRED = {"problem", "when_to_use", "method", "reuse_reason", "validation"}
-LIST_FIELDS = {"triggers": (8, 160), "checks": (12, 500), "source_refs": (10, 240)}
+LIST_FIELDS = {"triggers": (8, 160), "aliases": (12, 160), "checks": (12, 500), "source_refs": (10, 240)}
 RECORD_FIELDS = {
     "pitfalls": {"attempt": 1024, "observed": 1024, "lesson": 1024},
     "tool_recipes": {"purpose": 512, "tool_hint": 160, "usage": 2000, "check": 512},
@@ -39,6 +40,7 @@ def _text_schema(maximum: int) -> dict[str, Any]:
 # Also used by the transports: the host model should see the actual input shape.
 NEW_EXPERIENCE_SCHEMA: dict[str, Any] = {
     "type": "object", "additionalProperties": False, "required": sorted(REQUIRED),
+    "dependentRequired": {"target_capability_id": ["base_version_id", "base_content_hash"]},
     "properties": {
         **{key: _text_schema(limit) for key, limit in TEXT_FIELDS.items()},
         **{key: {"type": "array", "maxItems": count, "items": _text_schema(limit)}
@@ -55,7 +57,7 @@ NEW_EXPERIENCE_SCHEMA: dict[str, Any] = {
 EXPERIENCE_SCHEMA: dict[str, Any] = {"oneOf": [NEW_EXPERIENCE_SCHEMA, REUSE_SCHEMA]}
 
 
-def prepare_experience(raw: Any, *, target_name: str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+def prepare_experience(raw: Any, *, target_name: str | None = None) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Return a v1 candidate and agent-declared observations, separately hashed.
 
     Source references and validation observations must not produce new methods
@@ -84,7 +86,7 @@ def prepare_experience(raw: Any, *, target_name: str | None = None) -> tuple[dic
         if key in raw:
             data[key] = normalize_newlines(_require_text(raw[key], key, maximum))
     for key, (count, limit) in LIST_FIELDS.items():
-        data[key] = _string_list(raw.get(key, []), key, count, limit)
+        data[key] = [normalize_newlines(item) for item in _string_list(raw.get(key, []), key, count, limit)]
     for key, fields in RECORD_FIELDS.items():
         entries = raw.get(key, [])
         if not isinstance(entries, list) or len(entries) > 8:
@@ -100,28 +102,16 @@ def prepare_experience(raw: Any, *, target_name: str | None = None) -> tuple[dic
     name = data.get("name") or target_name or (
         problem[:65] + "-" + hashlib.sha256(problem.encode("utf-8")).hexdigest()[:8]
     )
-    sections = ["## Method / 方法\n" + data["method"]]
-    if data["triggers"]:
-        sections.append("## Recognition cues / 识别线索\n" + "\n".join("- " + item for item in data["triggers"]))
-    if data["pitfalls"]:
-        sections.append("## Failure lessons / 失败教训\n" + "\n\n".join(
-            f"反例：{entry['attempt']}\n观察：{entry['observed']}\n应对：{entry['lesson']}"
-            for entry in data["pitfalls"]
-        ))
-    if data["tool_recipes"]:
-        sections.append("## Tool recipes / 工具用法\n" + "\n\n".join(
-            f"用途：{entry['purpose']}\n工具线索：{entry['tool_hint']}\n用法：{entry['usage']}\n检查：{entry['check']}"
-            for entry in data["tool_recipes"]
-        ))
-    if data["checks"]:
-        sections.append("## Reuse checks / 复用验证\n" + "\n".join("- " + item for item in data["checks"]))
+    structure = {"format": 1, **{key: data[key] for key in
+                 ("method", "triggers", "aliases", "pitfalls", "tool_recipes", "checks")}, "addenda": []}
     candidate = normalize_candidate({
         "protocol_version": 1,
         "manifest": {"name": name, "kind": "procedure", "description": problem,
                      "when_to_use": data["when_to_use"], "not_for": raw.get("not_for", []),
                      "tags": raw.get("tags", []), "applicability": raw.get("applicability", {})},
-        "content": "\n\n".join(sections),
+        "content": render_structure(structure),
         **({"target_capability_id": data["target_capability_id"]} if "target_capability_id" in data else {}),
+        **{key: data[key] for key in ("base_version_id", "base_content_hash") if key in data},
     })
     observation = {key: data[key] for key in ("reuse_reason", "validation", "source_refs")}
-    return candidate, observation
+    return candidate, observation, structure

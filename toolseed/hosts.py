@@ -37,6 +37,7 @@ TREE_PATHS = (
     "toolseed/skill/SKILL.md",
     "pyproject.toml",
     "integrations/codex/src/",
+    "integrations/shared/learning-state.mjs",
     "integrations/dsh/package.json",
     "integrations/dsh/index.js",
     "integrations/dsh/backend.js",
@@ -48,6 +49,7 @@ TREE_PATHS = (
     "integrations/dsh/cordis.patch.yml",
     "integrations/dsh/install.ps1",
     "integrations/dsh/lib/client.js",
+    "integrations/dsh/lib/learning-state.mjs",
     "integrations/dsh/README.md",
     "integrations/dsh/build.mjs",
     "integrations/dsh/src/",
@@ -58,6 +60,14 @@ def package_dsh_plugin(plugin_dir: Path) -> Path:
     """Build a content-addressed local package; directory links lose host peers."""
     plugin_dir = plugin_dir.resolve()
     package = json.loads((plugin_dir / "package.json").read_text(encoding="utf-8"))
+    if "lib/learning-state.mjs" in package["files"]:
+        shared = plugin_dir.parent / "shared" / "learning-state.mjs"
+        artifact = (plugin_dir / "lib" / "learning-state.mjs").resolve()
+        if not shared.is_file() or not artifact.is_relative_to(plugin_dir):
+            raise HostInstallError("SHARED_RULES_MISSING", "共享学习规则缺失或产物路径无效。")
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        if not artifact.is_file() or artifact.read_bytes() != shared.read_bytes():
+            artifact.write_bytes(shared.read_bytes())
     files = sorted({"package.json", *package["files"]})
     payloads: list[tuple[str, bytes]] = []
     digest = hashlib.sha256()

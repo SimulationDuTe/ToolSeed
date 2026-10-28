@@ -126,7 +126,7 @@ class RevisionValidationTest(CoreTest):
 
     def test_targeted_save_revisions_also_have_base_lineage(self):
         saved = self.save()
-        revised = self.save(candidate(target_capability_id=saved["capability_id"], content="Check request timings, then compare the transport counters."))
+        revised = self.save(candidate(revision_of=saved, content="Check request timings, then compare the transport counters."))
         self.assertEqual(revised["revision_validation"]["base_version_id"], saved["version_id"])
         self.assertTrue(self.core.prepare_revision_validation(revised["revision_validation"])["ok"])
 
@@ -152,6 +152,9 @@ class RevisionValidationTest(CoreTest):
         row = self.core.registry.get_version(self.revised["version_id"])
         manifest = json.loads(row["manifest_json"])
         manifest["applicability"] = {"harnesses": ["codex"]}
-        revision = self.save({"protocol_version": 1, "manifest": manifest, "content": row["content"], "target_capability_id": self.saved["capability_id"]})
+        revision = self.save({"protocol_version": 1, "manifest": manifest, "content": row["content"],
+                              "target_capability_id": self.saved["capability_id"],
+                              "base_version_id": self.saved["version_id"],
+                              "base_content_hash": self.saved["content_hash"]})
         result = self.core.prepare_revision_validation(revision["revision_validation"], {"harnesses": ["dsh"]})
         self.assertEqual(result["error"]["reason_code"], "APPLICABILITY_MISMATCH")

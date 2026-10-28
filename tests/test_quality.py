@@ -12,10 +12,10 @@ class StorageQualityTest(CoreTest):
     case = "quality-storage"
 
     def test_schema_version_is_recorded_and_reopen_is_idempotent(self) -> None:
-        self.assertEqual(self.core.store.schema_version, 6)
+        self.assertEqual(self.core.store.schema_version, 7)
         self.core.close()
         self.core = ToolSeed(str(self.dir))
-        self.assertEqual(self.core.store.schema_version, 6)
+        self.assertEqual(self.core.store.schema_version, 7)
 
     def test_busy_timeout_and_legacy_v1_migration(self) -> None:
         timeout = self.core.store.db.execute("PRAGMA busy_timeout").fetchone()[0]
@@ -46,7 +46,7 @@ class StorageQualityTest(CoreTest):
 
         migrated = ToolSeed(str(legacy))
         try:
-            self.assertEqual(migrated.store.schema_version, 6)
+            self.assertEqual(migrated.store.schema_version, 7)
             columns = {
                 row["name"]
                 for row in migrated.store.db.execute("PRAGMA table_info(capabilities)")
@@ -69,6 +69,10 @@ class StorageQualityTest(CoreTest):
             self.core.store.transaction(),
             self.core.store.transaction(),
         ):
+            # SQLite has not begun a write yet. The Store still owns this
+            # deferred transaction, including nested domain service calls.
+            saved = self.core.toolbox_save(candidate())
+            self.assertEqual(saved.get("status"), "accepted", saved)
             self.core.store.db.execute(
                 "INSERT INTO capabilities (capability_id, name, created_at) "
                 "VALUES ('cap_nested', 'nested', 'now')"
@@ -82,6 +86,7 @@ class StorageQualityTest(CoreTest):
             "SELECT COUNT(*) AS n FROM capabilities"
         ).fetchone()["n"]
         self.assertEqual(count, 0)
+        self.assertEqual(self.core.store.db.execute("SELECT COUNT(*) FROM evidence_events").fetchone()[0], 0)
 
 
 class AtomicOperationQualityTest(CoreTest):
@@ -92,7 +97,7 @@ class AtomicOperationQualityTest(CoreTest):
         second = self.core.toolbox_save(
             candidate(
                 content="1. New version.\n2. Stop here.\n",
-                target_capability_id=first["capability_id"],
+                revision_of=first,
             ),
             "version two",
         )
@@ -133,7 +138,7 @@ class AtomicOperationQualityTest(CoreTest):
                 diagnosis["diagnosis_id"],
                 candidate(
                     content="1. Clarified.\n2. Stop here.\n",
-                    target_capability_id=saved["capability_id"],
+                    revision_of=saved,
                 ),
             )
         self.assertEqual(result["error"]["code"], "SAVE_PERSISTENCE_FAILED")

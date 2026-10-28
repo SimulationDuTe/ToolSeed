@@ -10,8 +10,10 @@ import re
 from typing import Any
 
 from .applicability import assess_applicability
+from .concepts import concepts
 from .errors import INVALID_ARGUMENT, error_response
 from .evidence import Evidence
+from .knowledge import version_structure
 from .manifest import CandidateError
 from .recall import match_recall, normalize_recall
 from .registry import STATUS_READY, Registry
@@ -76,16 +78,23 @@ class Search:
             return {"results": [self._card(*direct, context=context)]}
 
         wanted = tokens(query) if recall is None else set()
+        concept_goal = concepts(query) if recall is None else set()
         scored: list[tuple[float, Any, Any, Any]] = []
         for capability, version in self.registry.deliverable_capabilities(namespaces):
             manifest = json.loads(version["manifest_json"])
             if not self._applicability_compatible(manifest, context):
                 continue
             reason = None
+            structure = version_structure(version)
+            recognition = " ".join([*structure["aliases"], *structure["triggers"]]) if structure else ""
             if recall is not None:
-                score, reason = match_recall(query, recall, manifest, version["content"])
+                score, reason = match_recall(query, recall, manifest, version["content"], recognition)
             else:
                 score = self._score(wanted, manifest, version["content"])
+                score += 2.0 * len(wanted & tokens(recognition))
+                score += 2.0 * len(concept_goal & concepts(" ".join([
+                    manifest["name"], manifest["description"], manifest["when_to_use"],
+                    *manifest["tags"], recognition, version["content"]])))
             if score <= 0:
                 continue
             scored.append((score, capability, version, reason))

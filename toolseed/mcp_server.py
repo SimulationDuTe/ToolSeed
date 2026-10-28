@@ -75,7 +75,12 @@ def create_server(core: ToolSeed | None = None) -> Any:
         intent: str = "",
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Submit one normalized procedure candidate for persistence."""
+        """Submit one normalized procedure candidate for persistence.
+
+        Full targeted revisions require target_capability_id plus base_version_id
+        and base_content_hash from the full method read. A changed base is rejected;
+        read the current method and reconcile rather than relabeling an old draft.
+        """
         return call(ToolSeed.toolbox_save, candidate, intent, context)
 
     @server.tool()
@@ -104,7 +109,8 @@ def create_server(core: ToolSeed | None = None) -> Any:
         and limits, not a claim of general success). Optional pitfalls contain
         attempt/observed/lesson; tool_recipes contain purpose/tool_hint/usage/check.
         Include checks, triggers, not_for, tags, applicability and source_refs as
-        useful. To revise, pass target_capability_id and the COMPLETE updated
+        useful. To revise, pass target_capability_id, base_version_id and
+        base_content_hash from the full method read, and the COMPLETE updated
         method; revisions remain candidates until separately promoted. This tool
         never runs scripts or turns agent observations into verified task success.
 
@@ -127,7 +133,27 @@ def main() -> None:
         default=None,
         help="override TOOLSEED_DATA_DIR / ~/.toolseed",
     )
+    parser.add_argument("--probe", action="store_true",
+                        help="report runtime tools and features without opening the capability database")
     args = parser.parse_args()
+    if args.probe:
+        import asyncio
+        import json
+
+        from mcp import Client
+
+        from .core.storage import default_data_dir
+
+        async def probe() -> list[str]:
+            async with Client(create_server()) as client:
+                return [item.name for item in (await client.list_tools()).tools]
+
+        from pathlib import Path
+
+        print(json.dumps({"ok": True, "tools": asyncio.run(probe()),
+                          "features": {"read_only_search": True, "revision_base_binding": True},
+                          "data_dir": str(Path(args.data_dir or default_data_dir()).expanduser().resolve())}))
+        return
     try:
         core = ToolSeed(args.data_dir) if args.data_dir else ToolSeed()
     except MigrationConflict as exc:

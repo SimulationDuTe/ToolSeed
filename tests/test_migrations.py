@@ -219,13 +219,13 @@ class MigrationTest(unittest.TestCase):
         self.assertTrue(report["ok"], report)
         self.assertEqual(report["groups_before"], 1)
         self.assertEqual(report["groups_after"], 0)
-        self.assertEqual(report["schema_version"], 6)
+        self.assertEqual(report["schema_version"], 7)
         self.assertEqual([item["version_id"] for item in report["merged"]], ["ver_b"])
 
         db = sqlite3.connect(data / "toolseed.sqlite3")
         db.row_factory = sqlite3.Row
         try:
-            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 6)
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 7)
             row = db.execute(
                 "SELECT status, duplicate_of FROM capability_versions "
                 "WHERE version_id = 'ver_b'"
@@ -296,7 +296,7 @@ class MigrationTest(unittest.TestCase):
 
         core = ToolSeed(str(data))
         try:
-            self.assertEqual(core.store.schema_version, 6)
+            self.assertEqual(core.store.schema_version, 7)
         finally:
             core.close()
 
@@ -603,7 +603,7 @@ class MigrationTest(unittest.TestCase):
 
         core = ToolSeed(str(data))
         try:
-            self.assertEqual(core.store.schema_version, 6)
+            self.assertEqual(core.store.schema_version, 7)
             columns = {
                 row["name"]
                 for row in core.store.db.execute(

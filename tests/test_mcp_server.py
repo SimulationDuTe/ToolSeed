@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import os
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -25,6 +27,18 @@ class MissingMCPSdkTest(unittest.TestCase):
 @unittest.skipUnless(HAS_MCP, "official mcp Python SDK is not installed")
 class MCPServerTest(CoreTest):
     case = "mcp"
+
+    def test_runtime_probe_reports_actual_tools_without_creating_a_library(self) -> None:
+        missing = self.dir / "probe-only"
+        result = subprocess.run([sys.executable, "-B", "-X", "utf8", "-m", "toolseed.mcp_server",
+                                 "--data-dir", str(missing), "--probe"],
+                                capture_output=True, text=True, encoding="utf-8", check=True, timeout=15)
+        body = json.loads(result.stdout)
+        self.assertEqual(body["tools"], ["toolbox_search", "toolbox_save", "toolbox_run", "toolbox_stats", "toolbox_learn"])
+        self.assertTrue(body["features"]["read_only_search"])
+        self.assertTrue(body["features"]["revision_base_binding"])
+        self.assertEqual(Path(body["data_dir"]), missing.resolve())
+        self.assertFalse(missing.exists())
 
     def test_server_exposes_exactly_five_tools(self) -> None:
         from mcp import Client

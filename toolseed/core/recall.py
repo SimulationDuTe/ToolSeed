@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .concepts import concepts
 from .errors import INVALID_ARGUMENT
 from .manifest import CandidateError, _string_list
 
@@ -47,14 +48,18 @@ def normalize_recall(raw: Any, query: str) -> dict[str, Any] | None:
             "error_codes": _string_list(raw.get("error_codes", []), "recall.error_codes", 8, 80)}
 
 
-def match_recall(query: str, cue: dict[str, Any], manifest: dict[str, Any], content: str) -> tuple[float, dict[str, Any]]:
-    metadata = " ".join([manifest["name"], manifest["description"], manifest["when_to_use"], *manifest["tags"]])
+def match_recall(query: str, cue: dict[str, Any], manifest: dict[str, Any], content: str,
+                 recognition: str = "") -> tuple[float, dict[str, Any]]:
+    metadata = " ".join([manifest["name"], manifest["description"], manifest["when_to_use"], *manifest["tags"], recognition])
     goal = keywords(query)
     metadata_matches = goal & keywords(metadata)
     matches = goal & keywords(metadata + " " + content)
+    concept_goal = concepts(query)
+    concept_matches = concept_goal & concepts(metadata + " " + content)
+    concept_metadata = concept_goal & concepts(metadata)
     # Identifiers are matched whole. MCP's public leaf alias is a hint, never a
     # declaration that two tools have the same interface or permissions.
-    identifiers = set(re.findall(r"[a-z0-9_]+", (metadata + " " + content).casefold()))
+    identifiers = set(re.findall(r"[a-z0-9_]+(?:[-.:][a-z0-9_]+)*", (metadata + " " + content).casefold()))
     tool_identifiers = {item for item in identifiers if "_" in item}
     tool_identifiers.update(item.casefold() for item in manifest["applicability"].get("required_tools", []))
     for line in re.findall(r"^工具线索：([^\n]+)", content, re.MULTILINE):
@@ -63,12 +68,23 @@ def match_recall(query: str, cue: dict[str, Any], manifest: dict[str, Any], cont
              if name.casefold() in tool_identifiers or name.rsplit("__", 1)[-1].casefold() in tool_identifiers]
     errors = [code for code in cue["error_codes"] if code.casefold() in identifiers]
     # No CJK unigram matching and no single generic word as a task-start cue.
-    task_fit = len(matches) >= 2 and bool(metadata_matches)
+    # Synonyms of ONE concept do not count as multiple independent task cues.
+    independent: set[str] = set()
+    for term in matches:
+        term_concepts = concepts(term)
+        if term_concepts:
+            independent.update("concept:" + item for item in term_concepts)
+        else:
+            independent.add(term)
+    task_fit = (len(independent) >= 2 and bool(metadata_matches)) or (
+        len(concept_matches) >= 2 and bool(concept_metadata))
     eligible = task_fit if cue["phase"] == "task" else (
-        bool(errors) or task_fit or (bool(tools) and bool(matches))
+        bool(errors) or task_fit or (bool(tools) and bool(matches or concept_matches))
     )
     if cue["phase"] == "tools":
-        eligible = bool(tools) and bool(matches)
-    score = (len(matches) + 2 * len(metadata_matches) + 6 * len(tools) + 10 * len(errors)) if eligible else 0
+        eligible = bool(tools) and bool(matches or concept_matches)
+    score = (len(matches) + 2 * len(metadata_matches) + 2 * min(len(concept_matches), 4)
+             + 6 * len(tools) + 10 * len(errors)) if eligible else 0
     return float(score), {"phase": cue["phase"], "task_terms": sorted(matches)[:6],
+                          "concepts": sorted(concept_matches)[:6],
                           "tool_hints": tools[:3], "error_codes": errors[:3]}

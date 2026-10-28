@@ -150,7 +150,7 @@ class MaintenanceLifecycleTest(CoreTest):
         self.core.assess_evidence(saved_event, "valid", "unrelated_review")
         self.assertEqual(self._run(), [])
         self.assertEqual(self.core.evidence.get_decision(first["decision_id"]), snapshot)
-        self.assertEqual(self.core.store.schema_version, 6)
+        self.assertEqual(self.core.store.schema_version, 7)
         self.core.close()
         self.core = ToolSeed(self.dir)
         self.assertEqual(self._run(), [], "deduplication survives a process/connection restart")

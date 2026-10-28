@@ -183,7 +183,7 @@ are rejected. Error responses do not return subprocess stderr.
 The settings UI performs no Store initialization, database migration, capability execution or management
 mutation. Lifecycle restrictions on procedure content match the existing Inspector.
 Evidence gaps remain unknown; a delivery or failed tool invocation is not a task
-success/failure. Schema remains v6. Empty/missing/old/corrupt databases are explained
+success/failure. The current Core schema is v7. Empty/missing/old/corrupt databases are explained
 without automatically creating or repairing them.
 
 ## Verify
@@ -200,6 +200,7 @@ The five public MCP tools remain unchanged; the native validator is DSH-specific
 ```powershell
 node integrations/dsh/build.mjs
 node --test integrations/dsh/test/backend.test.mjs
+node --test integrations/shared/test/*.test.mjs
 python -X utf8 -m unittest tests.test_management tests.test_cli tests.test_ui -q
 ```
 
