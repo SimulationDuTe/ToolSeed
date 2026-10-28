@@ -4,6 +4,8 @@
 当前本地增量已接通经验学习、主动召回、复用反馈与修订验证；两轮真实模型任务观察到完整闭环。
 实现范围及限制见 [Alpha 状态](docs/ALPHA-STATUS.md)，实际过程见[实测记录](benchmarks/results/dsh-experience-2026-10-27/REPORT.md)。
 Codex 接入任务召回、经验提炼与原能力反馈，宿主差异及验证范围见 [Codex 工作流](docs/CODEX-WORKFLOW.md)。
+同版本配置更新、结构化错误教学及中英文场景召回的后续修复见 [后三项修复](docs/LAST-THREE-FIXES.md)。
+Core 领域服务与 DSH/Codex 共享学习状态的实现见 [架构重构记录](docs/ARCHITECTURE-REFACTOR.md)。
 
 面向 Agent 的本地**程序性能力库**（P0-Slim）。核心对象是 **Capability**：一个可复用、可检索、
 可版本化的 `procedure`。P0 只保存和交付程序性指引，**不执行代码**。
@@ -299,10 +301,10 @@ P0 只有一种候选传输格式：一个 JSON 对象，包含对象形式的 `
 ```
 
 - `protocol_version` 必须是整数 `1`。
-- 顶层只允许 `protocol_version`、`manifest`、`content` 和可选的 `target_capability_id`。
+- 顶层只允许 `protocol_version`、`manifest`、`content` 及修订字段 `target_capability_id`、`base_version_id`、`base_content_hash`。
 - `manifest` 必须恰好包含上述 7 个字段；`kind` 只能是 `procedure`。
 - Manifest 中的文本字段按 NFC 规范化并去首尾空白；`content` 只统一换行为 LF，不改写正文。
-- 提供 `target_capability_id` 时，为该能力创建新版本；省略时创建新 Capability（精确重复直接返回既有版本）。
+- 提供 `target_capability_id` 时，必须同时提供实际读取的 `base_version_id` 和 `base_content_hash`；基线改变则拒绝旧稿，重新读取并合并。省略修订字段时创建新 Capability（精确重复直接返回既有版本）。
 
 字段上限：
 
@@ -332,7 +334,7 @@ ID 直查允许查看条件冲突，但交付会拒绝已知冲突。详细语�
   `SAVE_PERSISTENCE_FAILED`，不会假装成功。
 - 精确重复的判断是：规范化后的 `name` 与 `content_hash` 都相同。命中时返回既有
   Capability/Version，`duplicate: true`，不创建重复版本。
-- 提供 `target_capability_id` 时，该能力必须存在且未 `archived`；相同内容哈希返回既有版本，
+- 提供 `target_capability_id` 时，该能力必须存在且未 `archived`，且读取基线版本/哈希仍匹配；相同内容哈希返回既有版本，
   否则新增一个 **candidate** 版本，不会替换当前版本。
 - 只有新建 Capability 的 clean 版本会直接进入 `ready`；修订版本必须经过
   `record-verification` + `promote-version`，验证证据必须绑定版本内容哈希、发生在候选创建之后，
@@ -473,12 +475,14 @@ SQLite 文件。这样不同 MCP 客户端可以共享同一能力库；项目�
 不写 `content/` 文件。`content_hash` 由 `protocol_version`、Manifest 和 `content` 的确定性 JSON
 （键按字典序、无多余空白）计算 SHA-256，格式为 `sha256:...`。
 
-Schema 使用 `PRAGMA user_version` 迁移，当前为 v5：
+Schema 使用 `PRAGMA user_version` 迁移，当前为 v7：
 
 - v2 增加 `capabilities.namespace`；
 - v3 在版本上记录 `namespace` / `name` 并回填；
 - v4 增加 `duplicate_of`，并移除旧的全局唯一索引；
 - v5 建立 `(namespace, name, content_hash)` 部分唯一索引，只约束 `duplicate_of IS NULL` 的版本；
+- v6 增加证据的版本内容哈希、信号去重键和验证结构；
+- v7 增加可空的版本经验结构 `knowledge_json`，旧内容、哈希和状态保持原样；
 - 迁移在单个事务内逐条执行；v3 前先做重复身份预检，发现冲突时停在 v2，不留下半迁移 Schema；
 - `migrate-check` 只读报告重复组、版本状态、current 指针和引用计数；有重复时退出码为 2；
 - 普通 CLI / `toolseed-mcp` 启动遇到迁移冲突时输出 `migrate-check` 提示并以非零状态退出；
@@ -702,11 +706,20 @@ GitHub Release 由 `v*` tag 触发：构建 sdist/wheel，生成 `SHA256SUMS`，
 
 ## 测试
 
+可移植宿主测试已纳入仓库与 CI（Node 22/24，Python 3.11+）：
+
+```bash
+node --test integrations/codex/test/*.test.mjs integrations/dsh/test/*.test.mjs integrations/shared/test/*.test.mjs
+```
+
+默认使用 PATH 中的 `python`，也可用 `TOOLSEED_TEST_PYTHON` 指定解释器。
+2026-10-28 的修订基线、用户纠正反馈和运行就绪加固见 [前四项修复](docs/FIRST-FOUR-FIXES.md)。
+
 ```bash
 python -m unittest discover -s tests -t . -v
 ```
 
-当前 **383 项**测试（Python 套件收录数；另含宿主打包完整性回归，各轮执行范围见 [修订生效](docs/REVISION-ACTIVATION.md)、[复用后更新](docs/REUSE-UPDATES.md)、[主动召回](docs/PROACTIVE-RECALL.md)、[经验学习](docs/EXPERIENCE-LEARNING.md)、[第一阶段记录](docs/PHASE-ONE.md)、[P1-A 验证说明](docs/P1-A.md)、[管理入口验证](docs/AGENT-INTERFACES.md) 与 [GUI 验证说明](docs/GUI.md)）；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
+当前 **417 项**测试（Python 套件收录数；另含宿主打包完整性回归，各轮执行范围见 [修订生效](docs/REVISION-ACTIVATION.md)、[复用后更新](docs/REUSE-UPDATES.md)、[主动召回](docs/PROACTIVE-RECALL.md)、[经验学习](docs/EXPERIENCE-LEARNING.md)、[第一阶段记录](docs/PHASE-ONE.md)、[P1-A 验证说明](docs/P1-A.md)、[管理入口验证](docs/AGENT-INTERFACES.md) 与 [GUI 验证说明](docs/GUI.md)）；MCP 集成测试依赖官方 SDK，未安装时自动 skip。覆盖：
 
 - Candidate/Manifest 契约、字段上限、未知字段拒绝、固定四工具；
 - 随包 Skill 与 Core 契约一致性（Skill 写明的字段上限必须等于 Core 权威常量）、保存被拒后的

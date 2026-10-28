@@ -4,7 +4,8 @@ import {parseArgs} from 'node:util';
 import {queryCodexAppServer} from './app-server-client.mjs';
 import {AGENTS_BEGIN, AGENTS_END, findCodexBinary, HOOK_STATUS, readMcpServerConfigured} from './install.mjs';
 import {resolveCodexHome, resolveDataDir} from './paths.mjs';
-import {WORKFLOW_EVENTS} from './workflow.mjs';
+import {WORKFLOW_EVENTS, hasWorkflowHooks} from './workflow.mjs';
+import {probeRuntime} from './runtime-probe.mjs';
 
 function readOptional(path) {
   try {
@@ -36,7 +37,7 @@ export async function verifyCodexAdapter(options = {}) {
 
   if (codex) {
     try {
-      const query = await queryCodexAppServer({
+      const query = await (options.query ?? queryCodexAppServer)({
         codex,
         codexHome,
         cwd,
@@ -62,12 +63,13 @@ export async function verifyCodexAdapter(options = {}) {
       || item?.statusMessage === HOOK_STATUS));
   checks.push({
     id: 'hook_listed',
-    ok: selectedHooks.length >= WORKFLOW_EVENTS.length,
-    detail: `${selectedHooks.length}/${WORKFLOW_EVENTS.length} workflow hooks listed`,
+    ok: hasWorkflowHooks(selectedHooks),
+    detail: hasWorkflowHooks(selectedHooks) ? `all ${WORKFLOW_EVENTS.length} required workflow events listed`
+      : 'one or more required workflow events are missing',
   });
   checks.push({
     id: 'hook_trusted',
-    ok: selectedHooks.length >= WORKFLOW_EVENTS.length && selectedHooks.every(item => item.trustStatus === 'trusted'),
+    ok: hasWorkflowHooks(selectedHooks) && selectedHooks.every(item => item.trustStatus === 'trusted'),
     detail: selectedHooks.length ? selectedHooks.map(item => `${item.key}: ${item.trustStatus}`).join('; ') : 'hooks not listed',
   });
   const skill = skills.find(item => item?.name === 'toolseed');
@@ -94,6 +96,11 @@ export async function verifyCodexAdapter(options = {}) {
       || projectConfig.some(text => readMcpServerConfigured(text, mcpServer)),
     detail: `[mcp_servers.${mcpServer}]`,
   });
+  const runtime = checks.find(check => check.id === 'mcp_server_config').ok
+    ? await (options.probe ?? probeRuntime)({python: options.python, codexHome, cwd, dataDir, mcpServer})
+    : {ok: false, code: 'MCP_NOT_CONFIGURED'};
+  checks.push({id: 'mcp_runtime', ok: runtime.ok === true,
+    detail: runtime.ok ? 'five tools, read-only recall and revision binding; matching data directory' : runtime.code});
 
   const database = join(dataDir, 'toolseed.sqlite3');
   checks.push({
@@ -102,9 +109,15 @@ export async function verifyCodexAdapter(options = {}) {
     detail: database,
   });
 
-  const required = new Set(['app_server', 'codex_binary', 'hook_listed', 'hook_trusted', 'skill_active', 'agents_md']);
+  const adapterRequired = new Set(['app_server', 'codex_binary', 'hook_listed', 'hook_trusted', 'skill_active', 'agents_md']);
+  const adapterOk = checks.filter(check => adapterRequired.has(check.id)).every(check => check.ok);
+  const ready = adapterOk && runtime.ok === true;
   return {
-    ok: checks.filter(check => required.has(check.id)).every(check => check.ok),
+    ok: ready,
+    ready,
+    adapter_ok: adapterOk,
+    database_state: existsSync(database) ? 'present' : 'uninitialized',
+    runtime,
     codex_home: codexHome,
     data_dir: dataDir,
     mcp_server: mcpServer,
@@ -123,9 +136,10 @@ function textReport(result) {
     `  Data dir:   ${result.data_dir}`,
   ];
   for (const check of result.checks) {
-    lines.push(`  ${check.ok ? 'PASS' : 'FAIL'}  ${check.id}: ${check.detail}`);
+    const status = check.id === 'toolseed_database' && !check.ok ? 'INFO' : check.ok ? 'PASS' : 'FAIL';
+    lines.push(`  ${status}  ${check.id}: ${check.detail}`);
   }
-  lines.push(result.ok ? 'Core adapter checks passed.' : 'Core adapter checks are incomplete.');
+  lines.push(result.ready ? 'Adapter and configured MCP runtime are ready.' : 'Adapter or configured MCP runtime is not ready.');
   return lines.join('\n');
 }
 
@@ -138,6 +152,7 @@ async function main() {
       'mcp-server': {type: 'string', default: 'toolseed'},
       codex: {type: 'string'},
       cwd: {type: 'string'},
+      python: {type: 'string'},
       json: {type: 'boolean', default: false},
     },
   });
@@ -147,6 +162,7 @@ async function main() {
     mcpServer: values['mcp-server'],
     codex: values.codex,
     cwd: values.cwd,
+    python: values.python,
   });
   process.stdout.write(values.json ? `${JSON.stringify(result, null, 2)}\n` : `${textReport(result)}\n`);
   process.exitCode = result.ok ? 0 : 1;

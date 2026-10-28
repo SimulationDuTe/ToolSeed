@@ -84,6 +84,7 @@ def _parser(prog: str) -> argparse.ArgumentParser:
     install.add_argument("--mcp-server", default="toolseed")
     install.add_argument("--python", default=None, help="MCP 使用的 Python；默认当前解释器")
     install.add_argument("--dsh-command", default="dsh")
+    install.add_argument("--repair", action="store_true", help="相同源码和配置也重新应用，修复配置漂移")
 
     update = sub.add_parser("update", help="升级到指定版本，失败时保留原安装")
     update.add_argument("host", choices=list(HOSTS))
@@ -94,6 +95,7 @@ def _parser(prog: str) -> argparse.ArgumentParser:
     update.add_argument("--mcp-server", default="toolseed")
     update.add_argument("--python", default=None)
     update.add_argument("--dsh-command", default="dsh")
+    update.add_argument("--repair", action="store_true", help="相同源码和配置也重新应用，修复配置漂移")
 
     uninstall = sub.add_parser("uninstall", help="卸载适配层，保留能力库与用户配置")
     uninstall.add_argument("host", choices=list(HOSTS))
@@ -158,7 +160,7 @@ def main(argv: list[str]) -> int:
                 args.host, ref=args.ref, root=root, data_dir=args.data_dir,
                 codex_home=args.codex_home, dsh_home=args.dsh_home,
                 mcp_server=args.mcp_server, python=args.python,
-                dsh_command=args.dsh_command, update=args.operation == "update",
+                dsh_command=args.dsh_command, update=args.operation == "update", repair=args.repair,
             )
             payload["action"] = "install"
             code = 0 if payload.get("ok") else 2

@@ -47,7 +47,7 @@ class PersistenceTest(CoreTest):
     def test_duplicate_under_a_target_returns_the_existing_version(self) -> None:
         first = self.save()
         second = self.core.toolbox_save(
-            candidate(target_capability_id=first["capability_id"]), "same content, target path"
+            candidate(revision_of=first), "same content, target path"
         )
         self.assertTrue(second["duplicate"])
         self.assertEqual(second["version_id"], first["version_id"])

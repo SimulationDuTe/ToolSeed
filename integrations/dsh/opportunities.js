@@ -27,7 +27,7 @@ export function toolseedBody(result) {
   }
   if (!Array.isArray(value.content) || value.content.length !== 1) return undefined;
   const block = value.content[0];
-  if (block?.type !== 'text' || typeof block.text !== 'string' || block.text.length > 65536) return undefined;
+  if (block?.type !== 'text' || typeof block.text !== 'string' || block.text.length > 131072) return undefined;
   try {
     const body = JSON.parse(block.text);
     return body && typeof body === 'object' && !Array.isArray(body) ? body : undefined;

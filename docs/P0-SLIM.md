@@ -129,7 +129,7 @@ P0 采用单进程本地 Core + 一个 Harness Adapter + 一个本地持久化�
 规范：
 
 - `protocol_version` 必须是整数 `1`；其他值拒绝处理，不猜测兼容性。
-- `candidate` 顶层只允许 `protocol_version`、`manifest`、`content` 和可选的 `target_capability_id`；未知字段拒绝处理，避免各实现私自扩展。未提供目标 ID 表示创建新 Capability；提供目标 ID 表示为该 Capability 创建新版本。
+- `candidate` 顶层只允许 `protocol_version`、`manifest`、`content` 与修订字段 `target_capability_id`、`base_version_id`、`base_content_hash`；未知字段拒绝处理。未提供修订字段表示创建新 Capability；提供目标 ID 时必须带实际读取的基线版本和哈希，保存事务中检查其仍匹配，避免旧稿绑定到新版本。
 - `manifest` 必须是 JSON 对象。权威校验规则只定义一次，位于 Core 的 `manifest` 模块/常量中；Manifest 只允许下述字段，不接受未定义字段。
 - `manifest` 必须包含 `name`、`kind`、`description`、`when_to_use`、`not_for`、`tags`、`applicability`。`kind` 固定为 `procedure`；其他 kind 返回 `UNSUPPORTED_CAPABILITY_KIND`，不得静默降级。
 - `name`、`description`、`when_to_use` 都必须是非空字符串；`name` 不超过 80 字符，`description` 不超过 280 字符，`when_to_use` 不超过 500 字符；`not_for` 是最多 10 个字符串、每项不超过 160 字符的数组；`tags` 是最多 12 个非空字符串、每项不超过 40 字符的数组。

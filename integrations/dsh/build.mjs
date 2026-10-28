@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 const here=new URL('./',import.meta.url);
+await fs.mkdir(new URL('lib/',here),{recursive:true});
+await fs.copyFile(new URL('../shared/learning-state.mjs',here),new URL('lib/learning-state.mjs',here));
 const source=await fs.readFile(new URL('../../toolseed/ui_assets/app.js',here),'utf8');
 const start='// TOOLSEED_SHARED_VIEWS_START',end='// TOOLSEED_SHARED_VIEWS_END';
 if(source.split(start).length!==2||source.split(end).length!==2)throw new Error('Shared GUI view boundaries missing or duplicated');

@@ -19,7 +19,7 @@ class VersionTest(CoreTest):
     def test_target_id_creates_new_version(self) -> None:
         first = self.save()
         second = self.core.toolbox_save(
-            candidate(target_capability_id=first["capability_id"], content=EXTENDED),
+            candidate(revision_of=first, content=EXTENDED),
             "extend the method",
         )
         self.assertEqual(second["capability_id"], first["capability_id"])
@@ -31,7 +31,7 @@ class VersionTest(CoreTest):
         rejected = self.core.toolbox_save(
             candidate(
                 manifest={"name": "different_name"},
-                target_capability_id=first["capability_id"],
+                revision_of=first,
                 content=EXTENDED,
             ),
             "rename attempt",
@@ -42,7 +42,7 @@ class VersionTest(CoreTest):
     def test_old_version_is_immutable(self) -> None:
         first = self.save()
         self.core.toolbox_save(
-            candidate(target_capability_id=first["capability_id"], content=EXTENDED),
+            candidate(revision_of=first, content=EXTENDED),
             "extend the method",
         )
         versions = self.core.registry.list_versions(first["capability_id"])
@@ -53,7 +53,7 @@ class VersionTest(CoreTest):
     def test_current_pointer_follows_verified_new_version(self) -> None:
         first = self.save()
         second = self.core.toolbox_save(
-            candidate(target_capability_id=first["capability_id"], content=EXTENDED),
+            candidate(revision_of=first, content=EXTENDED),
             "extend the method",
         )
         self.assertEqual(second["version_status"], "candidate")
@@ -77,7 +77,7 @@ class VersionTest(CoreTest):
     def test_identical_content_with_target_is_not_duplicated(self) -> None:
         first = self.save()
         again = self.core.toolbox_save(
-            candidate(target_capability_id=first["capability_id"]), "again"
+            candidate(revision_of=first), "again"
         )
         self.assertTrue(again["duplicate"])
         self.assertEqual(again["version"], 1)

@@ -28,6 +28,7 @@ CONTENT = (
 
 
 def candidate(**overrides: Any) -> dict[str, Any]:
+    revision_of = overrides.pop("revision_of", None)
     manifest = dict(MANIFEST)
     manifest.update(overrides.pop("manifest", {}))
     payload: dict[str, Any] = {
@@ -36,6 +37,10 @@ def candidate(**overrides: Any) -> dict[str, Any]:
         "content": CONTENT,
     }
     payload.update(overrides)
+    if revision_of is not None:
+        payload.update(target_capability_id=revision_of["capability_id"],
+                       base_version_id=revision_of["version_id"],
+                       base_content_hash=revision_of["content_hash"])
     return payload
 
 

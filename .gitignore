@@ -22,8 +22,8 @@ venv/
 .test-data/
 .final-check/
 tests/.data/
-# Host-side local tests remain on disk, following the existing repository policy.
-integrations/*/test/
+# Private host runs and fixtures belong in .test-data/; portable tests are tracked.
+integrations/*/test/host-*.mjs
 
 # ============ 临时产物 ============
 *.tmp

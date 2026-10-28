@@ -17,7 +17,7 @@ class PromotionContractTest(CoreTest):
         second = self.core.toolbox_save(
             candidate(
                 content=CONTENT + "\n4. verified revision.\n",
-                target_capability_id=first["capability_id"],
+                revision_of=first,
             ),
             "revision",
         )
@@ -231,13 +231,13 @@ class PromotionContractTest(CoreTest):
 
     def test_verification_of_an_earlier_version_does_not_carry_over(self) -> None:
         """Evidence stays bound to its own version and never satisfies a later one."""
-        first, second = self._revision()
+        _first, second = self._revision()
         verify_version(self.core, second)
         self.assertTrue(self.core.promote_version(second["version_id"], "verified")["promoted"])
         third = self.core.toolbox_save(
             candidate(
                 content=CONTENT + "\n5. third revision.\n",
-                target_capability_id=first["capability_id"],
+                revision_of=second,
             ),
             "third revision",
         )
@@ -314,7 +314,7 @@ class PromotionContractTest(CoreTest):
             db.close()
         upgraded = ToolSeed(str(legacy))
         try:
-            self.assertEqual(upgraded.store.schema_version, 6)
+            self.assertEqual(upgraded.store.schema_version, 7)
             columns = {
                 row["name"]
                 for row in upgraded.store.db.execute("PRAGMA table_info(evidence_events)")

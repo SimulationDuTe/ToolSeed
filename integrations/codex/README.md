@@ -44,13 +44,20 @@ toolseed install codex --ref F:/ToolSeed `
 
 新建 Codex 会话加载新 Skill / MCP 工具；安装器不重启用户会话。
 
+2026-10-28 起，安装器先只读探测实际 MCP 配置的运行环境，再写适配文件。
+`toolseed-mcp --probe` 返回实际注册工具、必要功能与数据目录，不创建或迁移能力库。
+旧 Core、不匹配的库路径、禁用配置或不可探测的包装命令会报告未就绪；包装命令不会自动运行包管理器。
+自检的 `adapter_ok` 只表示 Hook/Skill 接入正常，`ready` / `ok` 还要求 MCP 运行检查通过。
+缺库单列为 `database_state=uninitialized`，允许首次使用；单独写入配置不标记为已激活。
+自检的 `--python` 指定探测驱动（Python 3.11+）；实际检查的仍是配置中 MCP 服务所用的命令和环境。
+
 ## 约束与数据
 
 每轮最多 3 次查询、每次最多 2 张卡片；单次查询默认 1500 ms。查询失败关闭该轮自动召回，原任务继续。相同提示、查询、错误组、版本及工具执行标识去重。
 
 只读连接使用 SQLite `mode=ro`、`query_only` 和事务快照，不建库、不迁移、不创建交付或证据。缺库、结构不兼容或不可读时不输出候选。查询沿用 Core 的 namespace、生命周期、适用条件和保守匹配过滤。Hook 无法读取每个 Agent 的工具可见性，因此传入的是不完整工具清单，未知条件仍需模型核对。
 
-复杂操作提示：已观察到结构化失败且另有正常返回，或至少 6 次操作涉及至少 2 个工具，或单工具至少 8 次操作。普通返回不代表成功。一次提示后可跳过，无需为学习增加推理轮次；没有 Stop 驱动的自动续跑。
+复杂操作提示与 DSH 共用规则：结构化失败后出现正常返回、至少 6 次正常返回涉及至少 3 个工具，或工具活动后收到用户补充。普通返回不代表成功。一次提示后可跳过，无需为学习增加推理轮次；没有 Stop 驱动的自动续跑。
 
 完整方法交付后，最多保留 4 组 capability / invocation / version / hash 标识。后续有实际工具活动或用户补充才提示复用反馈。`toolbox_learn` 仍校验原交付绑定，匹配的已接受反馈才关闭对应项。修订保留候选及原验证门禁，DSH 专用修订执行工具没有移植为 Codex 原生工具。
 
@@ -62,9 +69,12 @@ toolseed install codex --ref F:/ToolSeed `
 node integrations/codex/src/verify.mjs --codex-home "$env:USERPROFILE\.codex" `
   --data-dir "C:/absolute/capability-library" --json
 node --test integrations/codex/test/*.test.mjs
+node --test integrations/shared/test/*.test.mjs
 ```
 
 当前验证目标为 Windows Codex CLI `0.164.0-alpha.11.1`。具体执行范围和部署记录见 [Codex 工作流](../../docs/CODEX-WORKFLOW.md)。旧版 `0.163.0-alpha.11` 的机会提示记录见 [历史交付](../../docs/CODEX-ADAPTER.md)。App 当前 UI 不单独声称已经验收。
+
+可移植的 `test/*.test.mjs` 已纳入版本控制，并由 CI 在三个系统的 Node 22 / 24 上运行；私人宿主运行脚本和数据继续隔离。最新修复记录见 [前四项修复](../../docs/FIRST-FOUR-FIXES.md)。
 
 Hook 返回上下文没有宿主确认回执，日志记为 `host_receipt=unknown`。原生端到端测试可以检查内容是否进入模型请求，但不能据此推断真实模型会主动提炼或采用。Codex 不保证所有传输失败都产生 PostToolUse；不解析自由文本 shell 错误。无自定义原生设置面板、通用权限确认接口或可靠任务结果通道。
 

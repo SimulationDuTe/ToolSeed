@@ -1,5 +1,16 @@
 # ToolSeed Alpha 状态说明
 
+> 2026-10-28 已拆分 Core 的学习、候选、生命周期、证据、维护与交付服务，保留统一门面；
+> DSH/Codex 共用经验提炼及复用反馈状态规则。接口、事务和宿主打包验证见
+> [架构重构记录](ARCHITECTURE-REFACTOR.md)。本轮没有新增数据库迁移。
+
+> 2026-10-28 后续已修复同版本运行配置更新，并提供 `--repair`；新经验保留版本绑定结构，
+> 高影响错误反例经过独立验证后可复用；召回增加中英文概念和别名，移除按能力逐条读取。
+> Schema 升级为 v7；当前源码修复与验证范围见 [后三项修复](LAST-THREE-FIXES.md)。
+
+> 2026-10-28 已加固完整修订的读取基线、DSH 手动采用后的用户纠正反馈、Codex 运行就绪判断，
+> 并将可移植宿主测试纳入仓库与 CI。行为和兼容说明见 [前四项修复](FIRST-FOUR-FIXES.md)。
+
 > 2026-10-27 Codex 接入任务召回、经验提炼提示与原能力复用反馈；使用受信 Hook 的本地只读查询。
 > 四个原生事件的信任、实际运行及部署范围见 [CODEX-WORKFLOW.md](CODEX-WORKFLOW.md)。
 
@@ -58,7 +69,7 @@ ToolSeed 已是可供真实 Agent 工作使用的 **Alpha**：五个公共工具
 | DSH Desktop 0.2.1-rc.2 原生 ToolSeed 插件设置页 | 官方 settings.section、宿主 IPC 查询；同文档原生控件与主题令牌；“已入库能力”/“活动”两页，详情含验证、历史及高级信息；隔离同版 DSH 验证外观同步 |
 | 可选独立 Web GUI | 复用两页及详情展示、固定 loopback、HTTP 安全测试；沿用 [GUI.md](GUI.md) 的证据边界 |
 
-本地回归：383 项测试（Python 当前套件收录数，含宿主打包完整性回归；本轮见 [修订生效](REVISION-ACTIVATION.md)，此前增量见 [复用后更新](REUSE-UPDATES.md)、[主动召回](PROACTIVE-RECALL.md)、[经验学习](EXPERIENCE-LEARNING.md) 与 [PHASE-ONE.md](PHASE-ONE.md)）。此前基线的 252 项测试已通过
+本地回归：417 项测试（Python 当前套件收录数，含宿主打包完整性回归；本轮见 [后三项修复](LAST-THREE-FIXES.md)，此前增量见 [修订生效](REVISION-ACTIVATION.md)、[复用后更新](REUSE-UPDATES.md)、[主动召回](PROACTIVE-RECALL.md)、[经验学习](EXPERIENCE-LEARNING.md) 与 [PHASE-ONE.md](PHASE-ONE.md)）。此前基线的 252 项测试已通过
 （2 项按条件跳过）；GUI 开发仅执行相关定向测试，见 [GUI 验证说明](GUI.md)。
 具体范围见 [README 测试章节](../README.md#测试)。
 DSH 插件现有 11 项 Node 定向测试。本轮 UI 简化运行 26 项 GUI/管理 Python 测试及 4 项文档契约测试。

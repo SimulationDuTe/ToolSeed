@@ -147,6 +147,25 @@ def _reusable_tree(root: Path, host: str, commit_sha: str,
     return None
 
 
+def _executable_identity(command: str) -> str:
+    resolved = shutil.which(command)
+    if resolved or Path(command).is_absolute() or Path(command).parent != Path("."):
+        return os.path.normcase(str(Path(resolved or command).expanduser().resolve()))
+    return command
+
+
+def _runtime_config(host: str, *, data: Path, python: str, codex_home: str | None,
+                    dsh_home: str | None, mcp_server: str, dsh_command: str,
+                    cwd: Path | None) -> dict[str, str]:
+    common = {"data_dir": os.path.normcase(str(data)), "python": _executable_identity(python)}
+    if host == "codex":
+        return {**common, "codex_home": os.path.normcase(str(_codex_home(codex_home))),
+                "mcp_server": mcp_server, "node": _executable_identity(_node_path()),
+                "cwd": os.path.normcase(str((cwd or Path.cwd()).resolve()))}
+    return {**common, "dsh_home": os.path.normcase(str(_dsh_home(dsh_home))),
+            "dsh_command": _executable_identity(dsh_command)}
+
+
 # ------------------------------------------------------------- host actions
 
 
@@ -159,6 +178,7 @@ def codex_verify_command(tree: Path, *, codex_home: Path, data_dir: Path,
         "--codex-home", str(codex_home),
         "--data-dir", str(data_dir),
         "--mcp-server", mcp_server,
+        "--python", sys.executable,
         "--json",
     ] + (["--cwd", str(cwd)] if cwd else [])
 
@@ -254,6 +274,7 @@ def install_host(
     cwd: Path | None = None,
     repo: str | None = None,
     update: bool = False,
+    repair: bool = False,
 ) -> dict[str, Any]:
     """Fetch a pinned tree, run the real installer, then activate it."""
     if host not in HOSTS:
@@ -261,6 +282,9 @@ def install_host(
     root = root or install_root()
     data = _data_dir(data_dir)
     python = python or sys.executable
+    runtime = _runtime_config(host, data=data, python=python, codex_home=codex_home,
+                              dsh_home=dsh_home, mcp_server=mcp_server,
+                              dsh_command=dsh_command, cwd=cwd)
     stale = prune_staging(root, host)
     # Only an explicitly supplied, non-default DSH home counts as isolated.
     isolated_home = bool(dsh_home) and _dsh_home(dsh_home) != _dsh_home(None)
@@ -290,14 +314,14 @@ def install_host(
         fingerprint = None
     previous = active_install(root, host)
 
-    # Re-running install/update for the commit that is already active must be a
-    # no-op: it must not create another version directory or touch host config.
+    # Source identity alone does not describe a deployment. Legacy manifests
+    # without runtime identity are reconciled once; --repair fixes file drift.
     if previous and previous.manifest.get("commit_sha") == resolution.commit_sha:
         same_content = (
             previous.manifest.get("source_fingerprint") == fingerprint
             if is_local else True
         )
-        if same_content:
+        if same_content and previous.manifest.get("runtime_config") == runtime and not repair:
             return {
                 "ok": True, "host": host, "changed": False,
                 "reason": "already-installed", "install": previous.manifest,
@@ -332,6 +356,7 @@ def install_host(
         ),
         "local_source": local_state,
         "source_fingerprint": fingerprint,
+        "runtime_config": runtime,
         "data_dir": str(data),
         "mcp_server": mcp_server,
         "directory": str(target),
@@ -346,6 +371,9 @@ def install_host(
                               python=python, dsh_command=dsh_command, dry_run=True,
                               isolated=isolated_home)
         )
+        if host == "codex" and dry.get("checks", {}).get("mcp_runtime") is not True:
+            raise HostInstallError("MCP_NOT_READY", "Codex MCP 运行环境未通过只读探测。",
+                                   detail=json.dumps(dry.get("runtime"), ensure_ascii=False))
         manifest["preflight"] = {"ok": True, "detail": dry}
         applied = (
             _install_codex(target, codex_home=_codex_home(codex_home), data_dir=data,
@@ -355,21 +383,25 @@ def install_host(
                               python=python, dsh_command=dsh_command, dry_run=False,
                               isolated=isolated_home)
         )
-        if applied.get("_exit_code") == 1:
+        if host == "codex" and (applied.get("_exit_code") == 1 or applied.get("ready") is not True):
             raise HostInstallError(
-                "VERIFY_FAILED", "Codex 安装完成但 hook 信任验证失败。",
-                detail=json.dumps(applied.get("trust"), ensure_ascii=False),
+                "VERIFY_FAILED", "Codex 适配层未就绪；检查 MCP 运行环境、Hook 信任及 Skill。",
+                detail=json.dumps(applied.get("error") or applied.get("trust"), ensure_ascii=False),
             )
         manifest["status"] = "active"
     except HostInstallError as exc:
         manifest.update({"status": "failed", "error": {"code": exc.code, "message": exc.message,
                                                        "detail": exc.detail}})
-        write_manifest(target, manifest)
+        # Reconfiguring the active source reuses its tree. A failed attempt must
+        # not replace the last successful deployment record on that tree.
+        if previous is None or target != previous.directory:
+            write_manifest(target, manifest)
         if previous is not None:
             # Nothing was activated yet: the previous pointer is still in place.
             return {
                 "ok": False, "host": host, "changed": False,
-                "error": manifest["error"], "rolled_back": True,
+                "error": manifest["error"], "rolled_back": False,
+                "previous_active_preserved": True,
                 "install": previous.manifest, "directory": str(previous.directory),
                 "failed_directory": str(target),
             }
@@ -380,7 +412,7 @@ def install_host(
     write_pointer(root / host, {
         "host": host, "directory": str(target), "commit_sha": resolution.commit_sha,
         "version": manifest["version"], "activated_at": utc_now(),
-        "previous": str(previous.directory) if previous else None,
+        "previous": str(previous.directory) if previous and previous.directory != target else None,
     })
     return {
         "ok": True, "host": host, "changed": True, "install": manifest,

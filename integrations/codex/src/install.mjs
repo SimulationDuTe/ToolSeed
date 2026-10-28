@@ -16,7 +16,8 @@ import {parseArgs} from 'node:util';
 import {queryCodexAppServer} from './app-server-client.mjs';
 import {HOST_CAPABILITIES} from './host-capabilities.mjs';
 import {defaultLogDir, defaultStateDir, resolveCodexHome, resolveDataDir} from './paths.mjs';
-import {WORKFLOW_EVENTS} from './workflow.mjs';
+import {hasWorkflowHooks, WORKFLOW_EVENTS} from './workflow.mjs';
+import {probeRuntime} from './runtime-probe.mjs';
 
 export const AGENTS_BEGIN = '<!-- toolseed-codex:begin -->';
 export const AGENTS_END = '<!-- toolseed-codex:end -->';
@@ -284,6 +285,7 @@ export async function installCodexAdapter(options = {}) {
   const databasePath = join(dataDir, 'toolseed.sqlite3');
   const plan = {
     applied: false,
+    ready: false,
     codex_home: codexHome,
     data_dir: dataDir,
     mcp_server: mcpServer,
@@ -314,7 +316,16 @@ export async function installCodexAdapter(options = {}) {
     host_capabilities: HOST_CAPABILITIES,
   };
 
+  const runtime = globalMcp || projectMcp.ok
+    ? await (options.probe ?? probeRuntime)({python, codexHome, cwd, dataDir, mcpServer})
+    : {ok: false, code: 'MCP_NOT_CONFIGURED'};
+  plan.runtime = runtime;
+  plan.checks.mcp_runtime = runtime.ok === true;
   if (!apply) return plan;
+  if (!runtime.ok) {
+    plan.error = {code: runtime.code, message: 'Configure a compatible ToolSeed MCP runtime before applying the adapter.'};
+    return plan;
+  }
 
   if (changes.skill) backupFile(skillTarget);
   if (changes.hooks) backupFile(hooksPath);
@@ -325,7 +336,7 @@ export async function installCodexAdapter(options = {}) {
   plan.applied = true;
 
   if (codex) {
-    const query = await queryCodexAppServer({
+    const query = await (options.query ?? queryCodexAppServer)({
       codex,
       codexHome,
       cwd,
@@ -339,7 +350,7 @@ export async function installCodexAdapter(options = {}) {
     const selectedHooks = findHooks(hooks, hooksPath);
     const hook = selectedHooks[0];
     const skills = entriesOf(query.results[1], 'skills');
-    plan.checks.hook_listed = selectedHooks.length >= WORKFLOW_EVENTS.length;
+    plan.checks.hook_listed = hasWorkflowHooks(selectedHooks);
     plan.checks.hook_count = selectedHooks.length;
     plan.checks.skill_active = skillIsActive(skills);
     if (!hook || !plan.checks.hook_listed) {
@@ -349,7 +360,7 @@ export async function installCodexAdapter(options = {}) {
         reason: 'trust disabled by --no-trust; approve the hook in Codex'};
     } else {
       try {
-        const write = await queryCodexAppServer({
+        const write = await (options.query ?? queryCodexAppServer)({
           codex,
           codexHome,
           cwd,
@@ -364,7 +375,7 @@ export async function installCodexAdapter(options = {}) {
         });
         const status = write.results[0]?.response?.result?.status;
         const verifiedHooks = findHooks(entriesOf(write.results[1], 'hooks'), hooksPath);
-        if (status !== 'ok' || verifiedHooks.length < WORKFLOW_EVENTS.length || verifiedHooks.some(item => item.trustStatus !== 'trusted')) {
+        if (status !== 'ok' || !hasWorkflowHooks(verifiedHooks) || verifiedHooks.some(item => item.trustStatus !== 'trusted')) {
           plan.trust = {status: 'failed', key: hook.key, hash: hook.currentHash,
             method: 'app_server.config/batchWrite',
             reason: 'Codex did not report trustStatus=trusted after config/batchWrite'};
@@ -384,6 +395,9 @@ export async function installCodexAdapter(options = {}) {
     && readOptional(agentsPath).includes(AGENTS_END);
   plan.checks.skill_file_exists = existsSync(skillTarget);
   plan.checks.toolseed_database = existsSync(databasePath);
+  plan.ready = plan.checks.mcp_runtime && plan.checks.hook_listed === true
+    && plan.checks.skill_active === true && plan.checks.agents_block === true
+    && plan.trust.status === 'trusted';
   return plan;
 }
 
@@ -478,6 +492,8 @@ function textReport(plan) {
     `  Hooks:      ${plan.files.hooks}`,
     `  AGENTS.md:  ${plan.files.agents}`,
     `  Trust:      ${plan.trust.status}${plan.trust.reason ? ` (${plan.trust.reason})` : ''}`,
+    `  Runtime:    ${plan.runtime?.ok ? 'compatible' : plan.runtime?.code ?? 'unverified'}`,
+    `  Ready:      ${plan.ready ? 'yes' : 'no'}`,
     `  MCP config: ${plan.checks.mcp_server_configured ? 'found' : 'not found (add an [mcp_servers.' + plan.mcp_server + '] block)'}`,
     `  Database:   ${plan.checks.toolseed_database ? 'found' : 'not found (MCP will create it on first use)'}`,
   ];
@@ -533,7 +549,7 @@ async function main() {
       cwd: values.cwd,
     });
     process.stdout.write(values.json ? `${JSON.stringify(plan, null, 2)}\n` : `${textReport(plan)}\n`);
-    process.exitCode = plan.trust.status === 'failed' ? 1 : 0;
+    process.exitCode = values.apply && !plan.ready ? 1 : 0;
   } catch (error) {
     process.stderr.write(`toolseed-codex install failed: ${error.message}\n`);
     process.exitCode = 1;

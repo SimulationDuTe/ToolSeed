@@ -87,7 +87,7 @@ class ActivityRecordingTest(CoreTest):
             self.assertEqual(result["created"], [])
             self.assertEqual(result["skipped"], 0)
         self.assertEqual(self.core.toolbox_stats()["task_outcomes"]["signals"], 0)
-        self.assertEqual(self.core.store.schema_version, 6)
+        self.assertEqual(self.core.store.schema_version, 7)
 
     def test_failed_call_only_changes_activity_total_not_existing_projections(self) -> None:
         saved = self.save()
@@ -166,7 +166,7 @@ class ActivityRecordingTest(CoreTest):
 
     def test_failure_never_satisfies_candidate_promotion_or_task_success(self) -> None:
         saved = self.save()
-        revised = self.save(candidate(target_capability_id=saved["capability_id"],
+        revised = self.save(candidate(revision_of=saved,
                                       content="Revised procedure"))
         before = self.core.promote_version(revised["version_id"], "must remain gated")
         failure_id = self._fail_delivery(saved)

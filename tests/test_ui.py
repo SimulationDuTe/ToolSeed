@@ -96,7 +96,7 @@ class InspectionTest(CoreTest):
 
     def test_candidates_quarantined_and_archived_versions_never_deliver_content(self) -> None:
         saved = self.save()
-        revised = self.save(candidate(target_capability_id=saved["capability_id"], content="Revised"))
+        revised = self.save(candidate(revision_of=saved, content="Revised"))
         data = self.read("capability", id=saved["capability_id"])
         self.assertEqual(data["versions"][0]["version_id"], revised["version_id"])
         self.assertIsNone(data["versions"][0]["content"])
@@ -117,7 +117,7 @@ class InspectionTest(CoreTest):
             invocation_id=delivery["invocation_id"], outcome="success", source_type="agent",
         )
         self.assertEqual(self.read("overview")["unknown_delivery_results"], 1)
-        revised = self.save(candidate(target_capability_id=saved["capability_id"], content="Revised"))
+        revised = self.save(candidate(revision_of=saved, content="Revised"))
         verified = verify_version(self.core, revised)
         evidence_id = verified["event_id"]
         self.core.assess_evidence(evidence_id, "stale", "test invalidation")

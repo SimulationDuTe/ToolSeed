@@ -5,20 +5,23 @@ import {extractStructuredFailure, extractToolseedKind, isPlainObject, toolseedBo
 import {compactCards, createRecallSearch, recallHint, taskQuery} from './recall.mjs';
 import {pruneStaleStates, saveState, sha256, withStateLock} from './state.mjs';
 
+import {createLearningState, restoreLearningState, reduceLearning, nextLearningHint, learningReason} from '../../shared/learning-state.mjs';
+
 const NAME = /^[A-Za-z0-9_.:/-]{1,128}$/;
-const REF = {capability_id: /^cap_[A-Za-z0-9_-]{1,120}$/,
-  version_id: /^ver_[A-Za-z0-9_-]{1,120}$/, invocation_id: /^inv_[A-Za-z0-9_-]{1,120}$/,
-  content_hash: /^sha256:[a-f0-9]{64}$/};
 export const WORKFLOW_EVENTS = ['UserPromptSubmit', 'PostToolUse', 'Interrupt', 'SessionEnd'];
+
+export function hasWorkflowHooks(hooks) {
+  const events = new Set(hooks.map(item => item.eventName));
+  return ['userPromptSubmit', 'postToolUse', 'interrupt', 'sessionEnd'].every(event => events.has(event));
+}
 
 export function workflowCanceled(input, {stateDir} = {}) {
   if (!stateDir || !input?.session_id || !input?.turn_id) return false;
   return existsSync(join(stateDir, `cancel-${sha256(input.session_id + '\0' + input.turn_id).slice(0, 32)}.json`));
 }
 
-function fresh(turn, carry = []) {
-  return {v: 1, turn, seen: [], tools: [], actions: 0, hadFailure: false, returned: false,
-    learningPrompted: false, reusePrompted: false, generalClosed: false, reuses: carry,
+function fresh(turn, learning = createLearningState(turn)) {
+  return {v: 2, turn, learning, seen: [], tools: [],
     queries: [], surfaced: [], searches: 0, recallFailed: false, promptHash: null,
     errorGroups: [], canceled: false};
 }
@@ -26,10 +29,28 @@ function fresh(turn, carry = []) {
 function read(path) {
   try {
     const state = JSON.parse(readFileSync(path, 'utf8'));
-    if (state.v === 1 && typeof state.turn === 'string' && Array.isArray(state.seen)
-        && Array.isArray(state.reuses) && Array.isArray(state.queries)
-        && Array.isArray(state.tools) && Array.isArray(state.surfaced) && Array.isArray(state.errorGroups)
-        && Number.isSafeInteger(state.actions) && Number.isSafeInteger(state.searches)) return state;
+    if (typeof state.turn !== 'string' || !Array.isArray(state.seen) || !Array.isArray(state.queries)
+        || !Array.isArray(state.tools) || !Array.isArray(state.surfaced) || !Array.isArray(state.errorGroups)
+        || !Number.isSafeInteger(state.searches)) return undefined;
+    const restore = learning => ({...fresh(state.turn, learning),
+      seen: state.seen.filter(item => /^[a-f0-9]{64}$/.test(item)).slice(0, 256),
+      tools: state.tools.filter(item => typeof item === 'string' && NAME.test(item)).slice(0, 64),
+      queries: state.queries.filter(item => /^[a-f0-9]{64}$/.test(item)).slice(0, 3),
+      surfaced: state.surfaced.filter(item => /^ver_[A-Za-z0-9_-]{1,120}$/.test(item)).slice(0, 6),
+      errorGroups: state.errorGroups.filter(item => typeof item === 'string' && item.length <= 240).slice(0, 16),
+      searches: Math.max(0, Math.min(state.searches, 3)), recallFailed: state.recallFailed === true,
+      promptHash: /^[a-f0-9]{64}$/.test(state.promptHash ?? '') ? state.promptHash : null,
+      canceled: state.canceled === true});
+    if (state.v === 2) return restore(restoreLearningState(state.learning, state.turn));
+    if (state.v === 1) {
+      const learning = createLearningState(state.turn);
+      for (const [index, delivery] of (state.reuses ?? []).slice(0, 4).entries()) {
+        Object.assign(learning, reduceLearning(learning, {type: 'tool_result', id: 'legacy-' + index,
+          kind: 'delivery', delivery}).state);
+      }
+      learning.canceled = state.canceled === true;
+      return restore(learning);
+    }
   } catch { /* Missing or malformed state starts empty. */ }
   return undefined;
 }
@@ -65,17 +86,17 @@ export async function handleWorkflow(input, options = {}) {
     const result = await withStateLock(path, async () => {
       let state = read(path);
       if (event === 'SessionEnd') {
-        if (state) {state.canceled = true; state.reuses = []; saveState(path, state);}
+        if (state) {state.canceled = true; state.learning = reduceLearning(state.learning, {type: 'session_closed'}).state; saveState(path, state);}
         return [];
       }
       if (event === 'Interrupt') {
-        if (state?.turn === turn) {state.canceled = true; saveState(path, state);}
+        if (state?.turn === turn) {state.canceled = true; state.learning = reduceLearning(state.learning, {type: 'canceled'}).state; saveState(path, state);}
         log('workflow_interrupted');
         return [];
       }
       if (!state || (event === 'UserPromptSubmit' && state.turn !== turn)) {
-        const carry = state && !state.canceled ? state.reuses.slice(-4) : [];
-        state = fresh(turn, carry);
+        const learning = state ? reduceLearning(state.learning, {type: 'turn_started', turn, userInitiated: true}).state : createLearningState(turn);
+        state = fresh(turn, learning);
       }
       if (state.turn !== turn || state.canceled || existsSync(cancel)) return [];
       const parts = [];
@@ -106,22 +127,24 @@ export async function handleWorkflow(input, options = {}) {
         parts.push(recallHint(cards, phase, mcpServer));
         log('recall_context_returned', {phase, candidate_count: cards.length, host_receipt: 'unknown'});
       }
-      function cues(reason) {
+      function cues() {
         if (options.learning === false) return;
-        if (state.reuses.length && !state.reusePrompted) {
-          parts.push(reuseHint(mcpServer, state.reuses)); state.reusePrompted = true;
-          log('reuse_learning_context_returned', {host_receipt: 'unknown'});
-        } else if (reason && !state.learningPrompted && !state.generalClosed) {
-          parts.push(learningHint(mcpServer, reason)); state.learningPrompted = true;
-          log('learning_context_returned', {host_receipt: 'unknown'});
-        }
+        const hint = nextLearningHint(state.learning);
+        if (!hint) return;
+        parts.push(hint.kind === 'reuse' ? reuseHint(mcpServer, hint.deliveries)
+          : learningHint(mcpServer, learningReason(hint.reason)));
+        state.learning = reduceLearning(state.learning, {type: 'hint_receipt', id: hint.id,
+          kind: hint.kind, status: 'returned'}).state;
+        log(hint.kind === 'reuse' ? 'reuse_learning_context_returned' : 'learning_context_returned',
+          {host_receipt: 'unknown', rule: hint.reason});
       }
       if (event === 'UserPromptSubmit') {
         const promptHash = sha256(typeof input.prompt === 'string' ? input.prompt : '');
         if (state.promptHash === promptHash) return [];
         state.promptHash = promptHash;
         await recall(taskQuery(input.prompt), 'task');
-        if (state.reuses.length || state.actions > 0) cues('工具活动后收到用户补充，请结合原文判断是否包含新教训');
+        state.learning = reduceLearning(state.learning, {type: 'user_message'}).state;
+        cues();
       } else {
         if (typeof input.tool_use_id !== 'string' || !input.tool_use_id || !NAME.test(input.tool_name ?? '')) return [];
         const token = sha256(input.tool_use_id);
@@ -130,42 +153,39 @@ export async function handleWorkflow(input, options = {}) {
         const kind = extractToolseedKind(input.tool_name, mcpServer);
         if (kind) {
           const body = toolseedBody(input.tool_response);
-          const failed = extractStructuredFailure(input.tool_name, input.tool_response);
-          if (!failed && kind === 'run' && body?.ok === true && body.execution_status === 'guidance_delivered'
-              && Object.entries(REF).every(([key, pattern]) => pattern.test(body[key] ?? ''))
-              && !state.reuses.some(r => r.invocation_id === body.invocation_id)
-              && state.reuses.length < 4) {
-            state.reuses.push(Object.fromEntries(Object.keys(REF).map(key => [key, body[key]])));
-          }
-          if (!failed && kind === 'learn' && body?.status === 'accepted') {
-            if (body.reuse_source) state.reuses = state.reuses.filter(r => !(r.invocation_id === body.reuse_source.invocation_id
-              && r.capability_id === body.capability_id && r.version_id === body.reuse_source.version_id
-              && r.content_hash === body.reuse_source.content_hash));
-            else state.generalClosed = true;
-          }
-        } else if (!['run_code', 'functions.exec'].includes(input.tool_name)) {
-          state.actions++;
+          const failed = Boolean(extractStructuredFailure(input.tool_name, input.tool_response));
+          state.learning = reduceLearning(state.learning, {type: 'tool_result', id: token,
+            kind: kind === 'run' ? 'delivery' : ['learn', 'save'].includes(kind) ? 'learning' : 'ignore', failed,
+            delivery: body?.ok === true && body.execution_status === 'guidance_delivered' ? body : undefined,
+            accepted: body?.status === 'accepted' && typeof body.capability_id === 'string',
+            feedback: body?.reuse_source ? {...body.reuse_source, capability_id: body.capability_id} : undefined}).state;
+        } else if (!['run_code', 'functions.exec', `${mcpServer}_validate_revision`].includes(input.tool_name)) {
           const isNew = !state.tools.includes(input.tool_name);
           if (isNew && state.tools.length < 64) state.tools.push(input.tool_name);
           const code = extractStructuredFailure(input.tool_name, input.tool_response);
           if (code) {
-            state.hadFailure = true;
             const group = input.tool_name + ':' + code;
             if (!state.errorGroups.includes(group) && state.errorGroups.length < 16) {
               state.errorGroups.push(group);
               await recall(input.tool_name + ' ' + code, 'error', {tool_hints: [input.tool_name], error_codes: [code]});
             }
-          } else state.returned = true;
+          }
           if (isNew && input.tool_name.startsWith('mcp__') && !code) {
             await recall(input.tool_name, 'tools', {tool_hints: [input.tool_name]});
           }
-          const reason = state.hadFailure && state.returned ? '曾有结构化失败，随后有工具返回'
-            : state.actions >= 6 && state.tools.length >= 2 ? '已完成一段多工具操作'
-              : state.actions >= 8 ? '已完成一段较长的工具操作' : undefined;
-          cues(reason);
+          state.learning = reduceLearning(state.learning, {type: 'tool_result', id: token,
+            kind: 'activity', tool: input.tool_name, failed: Boolean(code),
+            canceled: ['ABORTED', 'ABORTED_BEFORE_DISPATCH'].includes(code)}).state;
+        } else {
+          state.learning = reduceLearning(state.learning, {type: 'tool_result', id: token, kind: 'ignore'}).state;
         }
+        cues();
       }
-      if (existsSync(cancel)) {state.canceled = true; saveState(path, state); return [];}
+      if (existsSync(cancel)) {
+        state.canceled = true;
+        state.learning = reduceLearning(state.learning, {type: 'canceled'}).state;
+        saveState(path, state); return [];
+      }
       saveState(path, state);
       return parts;
     });

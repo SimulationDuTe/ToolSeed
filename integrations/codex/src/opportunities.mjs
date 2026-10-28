@@ -13,6 +13,7 @@ export const FAILURE_THRESHOLD = 3;
 export const MAX_EXECUTIONS = 256;
 export const MAX_GROUPS = 16;
 export const MAX_TEXT_BYTES = 65_536;
+const MAX_TOOLSEED_TEXT_BYTES = 131_072;
 
 const TOOL_NAME = /^[A-Za-z0-9_.:/-]{1,128}$/;
 const CODE = /^[A-Za-z0-9_.:-]{1,80}$/;
@@ -48,8 +49,8 @@ export function extractToolseedKind(toolName, mcpServer = 'toolseed') {
   return undefined;
 }
 
-function parseJsonObject(text) {
-  if (typeof text !== 'string' || text.length > MAX_TEXT_BYTES) return undefined;
+function parseJsonObject(text, maximum = MAX_TEXT_BYTES) {
+  if (typeof text !== 'string' || text.length > maximum) return undefined;
   const trimmed = text.replace(/^\uFEFF/, '').trim();
   if (!trimmed.startsWith('{')) return undefined;
   try {
@@ -60,13 +61,13 @@ function parseJsonObject(text) {
   }
 }
 
-function contentBody(content) {
+function contentBody(content, maximum = MAX_TEXT_BYTES) {
   if (!Array.isArray(content) || content.length !== 1) return undefined;
   const block = content[0];
-  if (block?.type !== 'text' || typeof block.text !== 'string' || block.text.length > MAX_TEXT_BYTES) {
+  if (block?.type !== 'text' || typeof block.text !== 'string' || block.text.length > maximum) {
     return undefined;
   }
-  return parseJsonObject(block.text);
+  return parseJsonObject(block.text, maximum);
 }
 
 export function toolseedBody(toolResponse) {
@@ -74,14 +75,15 @@ export function toolseedBody(toolResponse) {
   if (direct) {
     if (isPlainObject(direct.structuredContent)) return direct.structuredContent;
     if (isPlainObject(direct.result?.structuredContent)) return direct.result.structuredContent;
-    const nested = contentBody(direct.content) ?? contentBody(direct.result?.content);
+    const nested = contentBody(direct.content, MAX_TOOLSEED_TEXT_BYTES)
+      ?? contentBody(direct.result?.content, MAX_TOOLSEED_TEXT_BYTES);
     if (nested) return nested;
     if ('status' in direct || 'results' in direct || 'execution_status' in direct
         || 'capability_id' in direct || 'error' in direct) {
       return direct;
     }
   }
-  if (typeof toolResponse === 'string') return parseJsonObject(toolResponse);
+  if (typeof toolResponse === 'string') return parseJsonObject(toolResponse, MAX_TOOLSEED_TEXT_BYTES);
   return undefined;
 }
 
