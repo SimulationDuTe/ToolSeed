@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "entrypoint": "DEMO.md",
+  "include_files": [
+    "DEMO.md", "README.md", "LICENSE", "pyproject.toml", "docs/demo/scan.json",
+    "docs/ALPHA-STATUS.md", "docs/EXPERIENCE-LEARNING.md", "docs/PROACTIVE-RECALL.md",
+    "docs/REUSE-UPDATES.md", "docs/REVISION-ACTIVATION.md", "docs/ARCHITECTURE-REFACTOR.md",
+    "docs/FULL-UPDATE.md", "docs/FIRST-FOUR-FIXES.md", "docs/LAST-THREE-FIXES.md",
+    "docs/CODEX-WORKFLOW.md", "docs/GUI.md", "docs/PANEL-SIMPLIFICATION.md",
+    "docs/screenshots/toolseed-capabilities.png", "docs/screenshots/toolseed-activity.png",
+    "benchmarks/dsh_experience_trial.py",
+    "benchmarks/results/dsh-experience-2026-10-27/REPORT.md",
+    "benchmarks/results/dsh-experience-2026-10-27/capability.md",
+    "benchmarks/results/dsh-experience-2026-10-27/result.json"
+  ],
+  "include_trees": ["toolseed", "integrations/codex/src", "integrations/dsh", "integrations/shared"],
+  "source_extensions": [".py", ".md", ".js", ".mjs", ".cjs", ".css", ".html", ".json", ".yml", ".ps1"],
+  "excluded_parts": [".git", "__pycache__", "node_modules", "test", "tests", ".data"],
+  "exclude_from_repository_scan": [
+    ".test-data/", ".test-data-*/", ".toolseed/", ".uv-cache/", ".venv*/", ".release-venv/",
+    ".mcp-site/", "toolseed.egg-info/", ".mypy_cache/", ".ruff_cache/", "build/", "dist/",
+    "tests/.data/", "integrations/*/test/host-*.mjs", "demo-context/"
+  ]
+}

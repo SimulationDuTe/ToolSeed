@@ -20,6 +20,9 @@ venv/
 .test-data-*/
 # Centralized test data (see .test-data/INDEX.md). Never commit these.
 .test-data/
+# Curated, regenerable reading export for demonstration/video tools.
+demo-context/
+.demo-context-staging-*/
 .final-check/
 tests/.data/
 # Private host runs and fixtures belong in .test-data/; portable tests are tracked.
