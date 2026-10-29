@@ -30,7 +30,7 @@ def run(command: list[str], *, cwd: Path | None = None, timeout: int = 300,
     try:
         result = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, check=False,
                                 encoding="utf-8", errors="replace", timeout=timeout,
-                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise HostInstallError("PROCESS_FAILED", f"无法完成升级步骤：{Path(command[0]).name}") from exc
     if result.returncode:
