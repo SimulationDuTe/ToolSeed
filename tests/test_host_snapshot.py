@@ -19,6 +19,7 @@ class HostSnapshotTest(unittest.TestCase):
         with TemporaryDirectory(prefix="host-snapshot-", dir=base) as directory:
             snapshot = fetch_local_tree(REPO, Path(directory) / "snapshot")
             plugin = snapshot / "integrations" / "dsh"
+            self.assertEqual((snapshot / "LICENSE").read_bytes(), (plugin / "LICENSE").read_bytes())
             package = json.loads((plugin / "package.json").read_text(encoding="utf-8"))
             for relative in package["files"]:
                 self.assertTrue((plugin / relative).is_file(), relative)

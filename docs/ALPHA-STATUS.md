@@ -49,7 +49,7 @@
 
 本文件只说明**当前处于什么状态**，不新增契约、不放宽既有约束。实现与验收范围仍以
 [P0-SLIM.md](P0-SLIM.md) 为准，长期设计见 [DESIGN.md](DESIGN.md)；两者范围不一致时以
-P0-SLIM 为准；第五个学习工具及宿主触发增量以 [经验学习](EXPERIENCE-LEARNING.md) 补充。使用方法见 [README 的 Alpha 快速上手](../README.md#alpha-快速上手)，
+P0-SLIM 为准；第五个学习工具及宿主触发增量以 [经验学习](EXPERIENCE-LEARNING.md) 补充。使用方法见 [README 快速开始](../README.md#快速开始)，
 Agent 行为规约见随包分发的 [Skill](../toolseed/skill/SKILL.md)。
 
 ## 1. 一句话状态
@@ -79,7 +79,7 @@ ToolSeed 已是可供真实 Agent 工作使用的 **Alpha**：五个公共工具
 
 本地回归：442 项测试（Python 当前套件收录数，含宿主打包完整性回归；本轮见 [后三项修复](LAST-THREE-FIXES.md)，此前增量见 [修订生效](REVISION-ACTIVATION.md)、[复用后更新](REUSE-UPDATES.md)、[主动召回](PROACTIVE-RECALL.md)、[经验学习](EXPERIENCE-LEARNING.md) 与 [PHASE-ONE.md](PHASE-ONE.md)）。此前基线的 252 项测试已通过
 （2 项按条件跳过）；GUI 开发仅执行相关定向测试，见 [GUI 验证说明](GUI.md)。
-具体范围见 [README 测试章节](../README.md#测试)。
+具体范围见 [使用参考的测试章节](REFERENCE.md#测试)。
 DSH 插件现有 11 项 Node 定向测试。本轮 UI 简化运行 26 项 GUI/管理 Python 测试及 4 项文档契约测试。
 实际截图与本轮检查边界见 [PANEL-SIMPLIFICATION.md](PANEL-SIMPLIFICATION.md)。
 范围和宿主契约依据见

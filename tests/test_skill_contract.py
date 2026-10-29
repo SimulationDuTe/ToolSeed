@@ -91,14 +91,16 @@ class UsageDocumentTest(unittest.TestCase):
 
     def test_readme_links_the_alpha_status_and_quickstart(self) -> None:
         self.assertIn("docs/ALPHA-STATUS.md", README)
-        self.assertIn("## Alpha 快速上手", README)
+        self.assertIn("## 快速开始", README)
+        self.assertIn("docs/REFERENCE.md", README)
 
-    def test_readme_test_count_matches_the_suite(self) -> None:
+    def test_reference_test_count_matches_the_suite(self) -> None:
         loader = unittest.TestLoader()
         discovered = loader.discover(str(REPO / "tests"), top_level_dir=str(REPO))
         count = discovered.countTestCases()
-        match = re.search(r"当前 \*\*(\d+) 项\*\*测试", README)
-        self.assertIsNotNone(match, "README must state the current test count")
+        reference = (REPO / "docs" / "REFERENCE.md").read_text(encoding="utf-8")
+        match = re.search(r"当前 \*\*(\d+) 项\*\*测试", reference)
+        self.assertIsNotNone(match, "Reference must state the current test count")
         assert match is not None
         self.assertEqual(int(match.group(1)), count)
 

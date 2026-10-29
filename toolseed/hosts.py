@@ -36,10 +36,12 @@ TAG_RE = re.compile(r"^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$")
 TREE_PATHS = (
     "toolseed/",
     "README.md",
+    "LICENSE",
     "pyproject.toml",
     "integrations/codex/src/",
     "integrations/shared/learning-state.mjs",
     "integrations/dsh/package.json",
+    "integrations/dsh/LICENSE",
     "integrations/dsh/index.js",
     "integrations/dsh/backend.js",
     "integrations/dsh/opportunities.js",
