@@ -177,8 +177,8 @@ asyncio.run(main())
 
 ## 管理入口：DSH 原生面板、CLI 和可选 Web GUI
 
-当前工作树以已发布的 v0.4.1 为基线。新管理入口尚未发布；先在选定 Python 环境中安装本工作树
-（`python -m pip install -e .`）。各入口共享同一 `--data-dir`，不建立宿主专属能力库。
+v0.5.0 包含下列管理与宿主升级入口。安装对应发布包，或在开发环境执行
+`python -m pip install -e .`。各入口共享所配置的 `--data-dir`，不自动合并宿主能力库。
 
 CLI 默认沿用 JSON 输出，添加 `--text` 可用于终端阅读；通用参数可放在子命令前后：
 
@@ -616,7 +616,7 @@ python -m toolseed migrate-check --data-dir .toolseed
 工作区事件、权限确认、取消或可靠任务结果通道。不支持的能力返回 `False`，不模拟。
 它另外提供 `health_check()` 与 `translate_error()`，不改变 Core 的错误语义。
 
-**Codex Agent Adapter**（本地未发布）位于 `integrations/codex`：在既有 MCP 之外，
+**Codex Agent Adapter**（v0.5.0）位于 `integrations/codex`：在既有 MCP 之外，
 使用任务提交、工具返回、中断与会话结束 Hook 接入召回、学习提示和复用反馈，安装 ToolSeed Skill 与
 `AGENTS.md` 片段，并提供基于 Codex app-server 的安装/自检。它不替代 MCP，不修改
 Schema 或五个公共工具的协议。主动召回使用有界的本地只读 Core 查询；提炼与反馈由宿主模型通过 MCP 完成。接入方式、已验证范围与限制见
@@ -705,7 +705,8 @@ python scripts/verify_release.py --dist dist
 CI 的 `package` job 在 Ubuntu / Windows / macOS 上执行同一套检查。
 
 GitHub Release 由 `v*` tag 触发：构建 sdist/wheel，生成 `SHA256SUMS`，并作为 Release assets 上传。
-本仓库尚未发布到 PyPI；PyPI 发布流程需要单独验证。
+同一构建产物通过受信 GitHub Actions 发布到 PyPI；首次发布须配置 PyPI Trusted Publisher。
+发布结果以 [GitHub Releases](https://github.com/SimulationDuTe/ToolSeed/releases) 与 PyPI 的实际版本为准。
 
 ## 测试
 
