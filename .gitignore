@@ -22,6 +22,8 @@ venv/
 .test-data/
 # Curated, regenerable reading export for demonstration/video tools.
 demo-context/
+# Local video production workspace; kept separately from package releases.
+promo/
 .demo-context-staging-*/
 .final-check/
 tests/.data/

@@ -38,7 +38,10 @@ class MCPServerTest(CoreTest):
         self.assertTrue(body["features"]["read_only_search"])
         self.assertTrue(body["features"]["revision_base_binding"])
         self.assertEqual(body["schema_version"], 7)
-        self.assertEqual(body["core_version"], "0.4.1")
+        import tomllib
+
+        declared = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertEqual(body["core_version"], declared["project"]["version"])
         self.assertTrue(Path(body["module_path"]).is_file())
         self.assertEqual(Path(body["data_dir"]), missing.resolve())
         self.assertFalse(missing.exists())
