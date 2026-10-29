@@ -17,7 +17,7 @@ class HostReconfigurationTest(unittest.TestCase):
     def setUp(self):
         self.temporary = TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.base = Path(self.temporary.name)
+        self.base = Path(self.temporary.name).resolve()
         self.source = self.base / "source"
         (self.source / "integrations" / "codex" / "src").mkdir(parents=True)
         (self.source / "integrations" / "codex" / "src" / "install.mjs").write_text("// fixture", encoding="utf-8")

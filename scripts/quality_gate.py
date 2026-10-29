@@ -9,6 +9,7 @@ treated as passed.
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -18,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def run(name: str, command: list[str]) -> bool:
     print(f"\n== {name} ==")
-    result = subprocess.run(command, cwd=ROOT, check=False)
+    result = subprocess.run(command, cwd=ROOT, check=False, env={**os.environ, "PYTHONUTF8": "1"})
     if result.returncode != 0:
         print(f"FAIL: {name} (exit {result.returncode})")
         return False
