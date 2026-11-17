@@ -1,4 +1,4 @@
-﻿# ToolSeed
+# ToolSeed
 
 [![quality](https://github.com/SimulationDuTe/ToolSeed/actions/workflows/quality.yml/badge.svg)](https://github.com/SimulationDuTe/ToolSeed/actions/workflows/quality.yml)
 [![PyPI](https://img.shields.io/pypi/v/toolseed)](https://pypi.org/project/toolseed/)
