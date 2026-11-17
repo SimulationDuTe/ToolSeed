@@ -1,4 +1,11 @@
-# ToolSeed
+﻿# ToolSeed
+
+[![quality](https://github.com/SimulationDuTe/ToolSeed/actions/workflows/quality.yml/badge.svg)](https://github.com/SimulationDuTe/ToolSeed/actions/workflows/quality.yml)
+[![PyPI](https://img.shields.io/pypi/v/toolseed)](https://pypi.org/project/toolseed/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+> Turn agent experience into reusable capabilities — distill procedures, recall them when relevant, apply, and feed results back. Local MCP server for Codex / DSH.
 
 **让 Agent 把经验变成能力，在合适的时候用起来。**
 
@@ -10,6 +17,8 @@
 - **有用才留**：由模型判断跳过、复用、修订或创建，避免重复积累。
 - **积累方法**：保留怎么做、何时适用、踩过什么坑，以及如何验证。脚本是可选产物。
 - **边用边改**：观察回到原能力；方法修订经过验证后再生效。
+
+![ToolSeed 能力面板](docs/screenshots/toolseed-capabilities.png)
 
 ## 快速开始
 
@@ -35,6 +44,8 @@ toolseed update dsh --ref v0.5.0
 经验学习、主动召回、原能力反馈、候选修订，以及本地能力与活动查看。
 提供 Codex / DSH 适配，通过 MCP 交付指引，实际操作与权限检查由宿主完成。
 
+![经验与活动视图](docs/screenshots/toolseed-activity.png)
+
 在两轮真实 DSH 模型任务中，观察到了自主提炼、跨会话召回、实际采用与反馈回流。
 项目目前为 **Alpha**；案例与支持范围见[实测记录](benchmarks/results/dsh-experience-2026-10-27/REPORT.md)和
 [Alpha 状态](docs/ALPHA-STATUS.md)。
@@ -48,3 +59,7 @@ toolseed update dsh --ref v0.5.0
 ## 许可证
 
 [MIT](LICENSE)
+
+---
+
+如果这个项目对你有帮助，欢迎点个 Star ⭐。
